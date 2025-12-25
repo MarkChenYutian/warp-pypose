@@ -3,6 +3,7 @@ import pypose as pp
 from pypose.lietensor.utils import LieType
 
 from .Act import SO3_Act, SO3_Act_fwd, SO3_Act_bwd
+from .Log import SO3_Log, SO3_Log_fwd
 
 
 class warp_SO3Type(LieType):
@@ -19,6 +20,10 @@ class warp_SO3Type(LieType):
         else:
             raise NotImplementedError("SO3_Act4 not implemented yet!")
         return out
+    
+    def Log(self, X: pp.LieTensor) -> pp.LieTensor:
+        assert not self.on_manifold
+        return SO3_Log.apply(X)
 
 
 warpSO3_type = warp_SO3Type()
