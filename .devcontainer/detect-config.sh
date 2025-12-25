@@ -43,6 +43,6 @@ fi
 
 # Write to .env file in the root
 # Docker Compose automatically reads .env files in the same directory
-echo "DEV_IMAGE=$SELECTED_IMAGE" > ./Docker/Linux/.env
-echo "DEV_PLATFORM=$SELECTED_PLATFORM" >> ./Docker/Linux/.env
+echo "DEV_IMAGE=$SELECTED_IMAGE" > ./docker/Linux/.env
+echo "DEV_PLATFORM=$SELECTED_PLATFORM" >> ./docker/Linux/.env
 echo "Configured .env with Image: $SELECTED_IMAGE"

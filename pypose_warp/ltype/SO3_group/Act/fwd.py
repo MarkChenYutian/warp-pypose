@@ -6,7 +6,7 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ...utils.warp_utils import wp_quat_type, wp_vec3_type
+from ....utils.warp_utils import wp_quat_type, wp_vec3_type
 
 
 # =============================================================================

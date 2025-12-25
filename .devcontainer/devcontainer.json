@@ -1,7 +1,7 @@
 {
   "name": "warp-pypose Dev",
   "dockerComposeFile": [
-    "../Docker/Linux/docker-compose.yaml"
+    "../docker/Linux/docker-compose.yaml"
   ],
   
   // This runs the script on your HOST machine before Docker builds
