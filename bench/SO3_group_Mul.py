@@ -7,22 +7,23 @@ import warp as wp
 wp.init()
 
 from pypose_warp import to_warp_backend
-from pypose_warp.ltype.SO3_group import SO3_Act
+from pypose_warp.ltype.SO3_group import SO3_Mul
 from torch.utils.benchmark import Timer
 
 
 def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype, kind: T.Literal["n-n", "1-n", "n-1"]):
     match kind:
-        case "n-n": num_pose, num_point = num, num
-        case "1-n": num_pose, num_point = 1  , num
-        case "n-1": num_pose, num_point = num, 1
+        case "n-n": num_x, num_y = num, num
+        case "1-n": num_x, num_y = 1  , num
+        case "n-1": num_x, num_y = num, 1
     
-    pp_poses = pp.randn_SO3(num_pose, device=device, dtype=dtype)
-    wp_poses = to_warp_backend(pp_poses)
-    points   = torch.randn((num_point, 3), device=device, dtype=dtype)
+    pp_x = pp.randn_SO3(num_x, device=device, dtype=dtype)
+    pp_y = pp.randn_SO3(num_y, device=device, dtype=dtype)
+    wp_x = to_warp_backend(pp_x)
+    wp_y = to_warp_backend(pp_y)
     
-    pp_timer = Timer(stmt="pose.Act(points)", globals=dict(pose=pp_poses, points=points))
-    wp_timer = Timer(stmt="pose.Act(points)", globals=dict(pose=wp_poses, points=points))
+    pp_timer = Timer(stmt="x @ y", globals=dict(x=pp_x, y=pp_y))
+    wp_timer = Timer(stmt="x @ y", globals=dict(x=wp_x, y=wp_y))
     
     pp_bench = pp_timer.adaptive_autorange()
     wp_bench = wp_timer.adaptive_autorange()
@@ -31,22 +32,22 @@ def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype
 
 def bench_backward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype, kind: T.Literal["n-n", "1-n", "n-1"]):
     match kind:
-        case "n-n": num_pose, num_point = num, num
-        case "1-n": num_pose, num_point = 1  , num
-        case "n-1": num_pose, num_point = num, 1
+        case "n-n": num_x, num_y = num, num
+        case "1-n": num_x, num_y = 1  , num
+        case "n-1": num_x, num_y = num, 1
     
     # PyPose backward
     def pp_backward():
-        poses = pp.randn_SO3(num_pose, device=device, dtype=dtype, requires_grad=True)
-        points = torch.randn((num_point, 3), device=device, dtype=dtype, requires_grad=True)
-        result = poses.Act(points)
+        x = pp.randn_SO3(num_x, device=device, dtype=dtype, requires_grad=True)
+        y = pp.randn_SO3(num_y, device=device, dtype=dtype, requires_grad=True)
+        result = x @ y
         result.sum().backward()
     
-    # Warp backward (using SO3_Act.apply directly)
+    # Warp backward (using SO3_Mul.apply directly)
     def wp_backward():
-        poses = pp.randn_SO3(num_pose, device=device, dtype=dtype, requires_grad=True)
-        points = torch.randn((num_point, 3), device=device, dtype=dtype, requires_grad=True)
-        result = SO3_Act.apply(poses, points)
+        x = pp.randn_SO3(num_x, device=device, dtype=dtype, requires_grad=True)
+        y = pp.randn_SO3(num_y, device=device, dtype=dtype, requires_grad=True)
+        result = SO3_Mul.apply(x, y)
         result.sum().backward()
     
     pp_timer = Timer(stmt="pp_backward()", globals=dict(pp_backward=pp_backward))
@@ -65,7 +66,7 @@ DTYPE_MAP = {
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark SO3 Act forward/backward")
+    parser = argparse.ArgumentParser(description="Benchmark SO3 Mul forward/backward")
     parser.add_argument("--mode", choices=["fwd", "bwd"], default="fwd", help="Benchmark forward or backward pass")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda", help="Device to run on")
     parser.add_argument("--dtype", choices=["fp16", "fp32", "fp64"], default="fp32", help="Data type")
@@ -79,7 +80,7 @@ def main():
         print("CUDA not available, falling back to CPU")
         args.device = "cpu"
     
-    print(f"Benchmarking SO3.Act {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size} | kind={args.kind}")
+    print(f"Benchmarking SO3.Mul {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size} | kind={args.kind}")
     print("-" * 80)
     
     if args.mode == "fwd":
@@ -97,3 +98,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

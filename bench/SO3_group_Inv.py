@@ -7,7 +7,7 @@ import warp as wp
 wp.init()
 
 from pypose_warp import to_warp_backend
-from pypose_warp.ltype.SO3_group import SO3_Log
+from pypose_warp.ltype.SO3_group import SO3_Inv
 from torch.utils.benchmark import Timer
 
 
@@ -15,8 +15,8 @@ def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype
     pp_poses = pp.randn_SO3(num, device=device, dtype=dtype)
     wp_poses = to_warp_backend(pp_poses)
     
-    pp_timer = Timer(stmt="pose.Log()", globals=dict(pose=pp_poses))
-    wp_timer = Timer(stmt="pose.Log()", globals=dict(pose=wp_poses))
+    pp_timer = Timer(stmt="pose.Inv()", globals=dict(pose=pp_poses))
+    wp_timer = Timer(stmt="pose.Inv()", globals=dict(pose=wp_poses))
     
     pp_bench = pp_timer.adaptive_autorange()
     wp_bench = wp_timer.adaptive_autorange()
@@ -27,13 +27,13 @@ def bench_backward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtyp
     # PyPose backward
     def pp_backward():
         poses = pp.randn_SO3(num, device=device, dtype=dtype, requires_grad=True)
-        result = poses.Log()
+        result = poses.Inv()
         result.sum().backward()
     
-    # Warp backward (using SO3_Log.apply directly)
+    # Warp backward (using SO3_Inv.apply directly)
     def wp_backward():
         poses = pp.randn_SO3(num, device=device, dtype=dtype, requires_grad=True)
-        result = SO3_Log.apply(poses)
+        result = SO3_Inv.apply(poses)
         result.sum().backward()
     
     pp_timer = Timer(stmt="pp_backward()", globals=dict(pp_backward=pp_backward))
@@ -52,7 +52,7 @@ DTYPE_MAP = {
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark SO3 Log forward/backward")
+    parser = argparse.ArgumentParser(description="Benchmark SO3 Inv forward/backward")
     parser.add_argument("--mode", choices=["fwd", "bwd"], default="fwd", help="Benchmark forward or backward pass")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda", help="Device to run on")
     parser.add_argument("--dtype", choices=["fp16", "fp32", "fp64"], default="fp32", help="Data type")
@@ -65,7 +65,7 @@ def main():
         print("CUDA not available, falling back to CPU")
         args.device = "cpu"
     
-    print(f"Benchmarking SO3.Log {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size}")
+    print(f"Benchmarking SO3.Inv {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size}")
     print("-" * 80)
     
     if args.mode == "fwd":

@@ -2,9 +2,7 @@
 import pytest
 import torch
 import pypose as pp
-
-from pypose_warp.ltype.SO3_group import SO3_Act_fwd
-from pypose_warp.ltype.SO3_group.Act import SO3_Act
+from pypose_warp.ltype.SO3_group import SO3_Act, SO3_Act_fwd
 from conftest import get_tolerances
 
 
