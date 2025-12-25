@@ -7,6 +7,7 @@ from .Log   import SO3_Log, SO3_Log_fwd, SO3_Log_bwd
 from .Inv   import SO3_Inv, SO3_Inv_fwd, SO3_Inv_bwd
 from .Mul   import SO3_Mul, SO3_Mul_fwd, SO3_Mul_bwd
 from .AdjXa import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
+from .AdjTXa import SO3_AdjTXa, SO3_AdjTXa_fwd, SO3_AdjTXa_bwd
 
 
 class warp_SO3Type(LieType):
@@ -44,5 +45,8 @@ class warp_SO3Type(LieType):
 
     def Adj(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
         return SO3_AdjXa.apply(X, a)
+
+    def AdjT(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
+        return SO3_AdjTXa.apply(X, a)
 
 warpSO3_type = warp_SO3Type()

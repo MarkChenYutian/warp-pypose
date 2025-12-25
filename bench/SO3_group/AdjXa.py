@@ -11,9 +11,14 @@ from pypose_warp.ltype.SO3_group import SO3_AdjXa
 from torch.utils.benchmark import Timer
 
 
-def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype):
-    pp_poses = pp.randn_SO3(num, device=device, dtype=dtype)
-    pp_algebra = pp.randn_so3(num, device=device, dtype=dtype)
+def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype, kind: T.Literal["n-n", "1-n", "n-1"]):
+    match kind:
+        case "n-n": num_pose, num_algebra = num, num
+        case "1-n": num_pose, num_algebra = 1  , num
+        case "n-1": num_pose, num_algebra = num, 1
+    
+    pp_poses = pp.randn_SO3(num_pose, device=device, dtype=dtype)
+    pp_algebra = pp.randn_so3(num_algebra, device=device, dtype=dtype)
     wp_poses = to_warp_backend(pp_poses)
     
     pp_timer = Timer(stmt="pose.Adj(a)", globals=dict(pose=pp_poses, a=pp_algebra))
@@ -24,18 +29,23 @@ def bench_forward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype
     return pp_bench, wp_bench
 
 
-def bench_backward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype):
+def bench_backward(num: int, device: T.Literal["cpu", "cuda"], dtype: torch.dtype, kind: T.Literal["n-n", "1-n", "n-1"]):
+    match kind:
+        case "n-n": num_pose, num_algebra = num, num
+        case "1-n": num_pose, num_algebra = 1  , num
+        case "n-1": num_pose, num_algebra = num, 1
+    
     # PyPose backward
     def pp_backward():
-        poses = pp.randn_SO3(num, device=device, dtype=dtype, requires_grad=True)
-        algebra = pp.randn_so3(num, device=device, dtype=dtype, requires_grad=True)
+        poses = pp.randn_SO3(num_pose, device=device, dtype=dtype, requires_grad=True)
+        algebra = pp.randn_so3(num_algebra, device=device, dtype=dtype, requires_grad=True)
         result = poses.Adj(algebra)
         result.sum().backward()
     
     # Warp backward (using SO3_AdjXa.apply directly)
     def wp_backward():
-        poses = pp.randn_SO3(num, device=device, dtype=dtype, requires_grad=True)
-        algebra = pp.randn_so3(num, device=device, dtype=dtype, requires_grad=True)
+        poses = pp.randn_SO3(num_pose, device=device, dtype=dtype, requires_grad=True)
+        algebra = pp.randn_so3(num_algebra, device=device, dtype=dtype, requires_grad=True)
         result = SO3_AdjXa.apply(poses, algebra)
         result.sum().backward()
     
@@ -60,6 +70,7 @@ def main():
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda", help="Device to run on")
     parser.add_argument("--dtype", choices=["fp16", "fp32", "fp64"], default="fp32", help="Data type")
     parser.add_argument("--size", type=int, default=10000, help="Batch size")
+    parser.add_argument("--kind", choices=["n-n", "1-n", "n-1"], default="n-n", help="Broadcasting pattern")
     args = parser.parse_args()
     
     dtype = DTYPE_MAP[args.dtype]
@@ -68,13 +79,13 @@ def main():
         print("CUDA not available, falling back to CPU")
         args.device = "cpu"
     
-    print(f"Benchmarking SO3.Adj (AdjXa) {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size}")
+    print(f"Benchmarking SO3.Adj (AdjXa) {args.mode} | device={args.device} | dtype={args.dtype} | size={args.size} | kind={args.kind}")
     print("-" * 80)
     
     if args.mode == "fwd":
-        pp_bench, wp_bench = bench_forward(args.size, args.device, dtype)
+        pp_bench, wp_bench = bench_forward(args.size, args.device, dtype, args.kind)
     else:
-        pp_bench, wp_bench = bench_backward(args.size, args.device, dtype)
+        pp_bench, wp_bench = bench_backward(args.size, args.device, dtype, args.kind)
     
     print(f"PyPose:  {pp_bench}")
     print(f"Warp:    {wp_bench}")
@@ -86,4 +97,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
