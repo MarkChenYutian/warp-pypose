@@ -1,0 +1,21 @@
+{
+  "name": "warp-pypose Dev",
+  "dockerComposeFile": [
+    "../Docker/Linux/docker-compose.yaml"
+  ],
+  
+  // This runs the script on your HOST machine before Docker builds
+  "initializeCommand": "./.devcontainer/detect-config.sh",
+
+  // Point to the single variable-driven service
+  "service": "dev-unified-entry",
+  "workspaceFolder": "/workspace",  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python", "ms-vscode.cpptools", "guidotapia2.unicode-math-vscode", "openai.chatgpt"
+      ]
+    }
+  },
+  "shutdownAction": "stopCompose"
+}

@@ -1,0 +1,4 @@
+pypose
+pytest
+pyright
+warp-lang
