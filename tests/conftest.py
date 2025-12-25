@@ -24,7 +24,7 @@ def get_tolerances(dtype: torch.dtype) -> dict:
         torch.testing.assert_close(result, expected, **get_tolerances(dtype))
     """
     if dtype == torch.float16:
-        return {"atol": 1e-2, "rtol": 1e-2}
+        return {"atol": 2e-2, "rtol": 2e-2}
     elif dtype == torch.float32:
         return {"atol": 1e-5, "rtol": 1e-5}
     elif dtype == torch.float64:

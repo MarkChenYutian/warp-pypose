@@ -141,7 +141,7 @@ _SO3_Act_bwd_kernels = {
 # =============================================================================
 
 def SO3_Act_bwd(
-    X: pp.LieTensor,
+    X: torch.Tensor,
     out: torch.Tensor,
     grad_output: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -149,7 +149,7 @@ def SO3_Act_bwd(
     Backward pass for SO3_Act.
     
     Args:
-        X: SO3 LieTensor of shape (..., 4) - quaternion representation (saved from forward)
+        X: Quaternion tensor of shape (..., 4) - expanded to broadcast shape
         out: Output from forward pass, shape (..., 3) (saved from forward)
         grad_output: Gradient w.r.t. output, shape (..., 3)
         
@@ -157,7 +157,7 @@ def SO3_Act_bwd(
         grad_X: Gradient w.r.t. X, shape (..., 4)
         grad_p: Gradient w.r.t. p, shape (..., 3)
     """
-    X_tensor = X.tensor()
+    X_tensor = X
     batch_shape = X_tensor.shape[:-1]
     ndim = len(batch_shape)
     
