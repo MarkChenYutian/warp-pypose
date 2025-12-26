@@ -29,7 +29,8 @@ class SO3_Act4(torch.autograd.Function):
         p_expanded = p.expand(*out_batch_shape, 4)
         
         # Run forward pass
-        out = SO3_Act4_fwd(pp.LieTensor(X_expanded, ltype=pp.SO3_type), p_expanded)
+        from .. import warpSO3_type  # lazy import to avoid circular import
+        out = SO3_Act4_fwd(pp.LieTensor(X_expanded, ltype=warpSO3_type), p_expanded)
         
         # Save expanded tensors and original shapes for backward
         # We need to save X_expanded because backward needs it at the output shape

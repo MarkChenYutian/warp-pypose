@@ -18,7 +18,8 @@ class so3_Exp(torch.autograd.Function):
         x_tensor = x.tensor() if hasattr(x, 'tensor') else x
         
         # Create LieTensor for the forward function
-        x_lie = pp.LieTensor(x_tensor, ltype=pp.so3_type) if not hasattr(x, 'ltype') else x
+        from ... import warpso3_type  # lazy import to avoid circular import
+        x_lie = pp.LieTensor(x_tensor, ltype=warpso3_type) if not hasattr(x, 'ltype') else x
         
         out = so3_Exp_fwd(x_lie)
         

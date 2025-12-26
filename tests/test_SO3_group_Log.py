@@ -2,6 +2,7 @@
 import pytest
 import torch
 import pypose as pp
+from pypose_warp import to_pypose_backend
 from pypose_warp.ltype.SO3_group import SO3_Log, SO3_Log_fwd
 from conftest import get_tolerances
 
@@ -17,7 +18,7 @@ class TestSO3LogBatchDimensions:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (5, 3)
-        assert result.ltype == expected.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == expected.ltype == pp.so3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -29,7 +30,7 @@ class TestSO3LogBatchDimensions:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (3, 4, 3)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -41,7 +42,7 @@ class TestSO3LogBatchDimensions:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (2, 3, 4, 3)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -53,7 +54,7 @@ class TestSO3LogBatchDimensions:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 3)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -65,7 +66,7 @@ class TestSO3LogBatchDimensions:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (3,)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -165,7 +166,7 @@ class TestSO3LogEdgeCases:
         result = SO3_Log_fwd(so3)
 
         assert isinstance(result, pp.LieTensor)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
 
 
 class TestSO3LogErrors:
@@ -227,7 +228,7 @@ class TestSO3LogWarpBackend:
         expected = so3.Log()
 
         assert result.shape == expected.shape == (5, 3)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
     def test_warp_backend_log_2d(self, device, dtype):

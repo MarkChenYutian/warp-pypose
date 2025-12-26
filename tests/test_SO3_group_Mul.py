@@ -3,6 +3,7 @@ import pytest
 import torch
 import pypose as pp
 
+from pypose_warp import to_pypose_backend
 from pypose_warp.ltype.SO3_group.Mul import SO3_Mul
 from pypose_warp.ltype.SO3_group.Mul.fwd import SO3_Mul_fwd
 from conftest import get_tolerances
@@ -20,7 +21,7 @@ class TestSO3MulBatchDimensions:
         expected = X @ Y
 
         assert result.shape == expected.shape == (5, 4)
-        assert result.ltype == expected.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == expected.ltype == pp.SO3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -33,7 +34,7 @@ class TestSO3MulBatchDimensions:
         expected = X @ Y
 
         assert result.shape == expected.shape == (3, 4, 4)
-        assert result.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == pp.SO3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -46,7 +47,7 @@ class TestSO3MulBatchDimensions:
         expected = X @ Y
 
         assert result.shape == expected.shape == (2, 3, 4, 4)
-        assert result.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == pp.SO3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -59,7 +60,7 @@ class TestSO3MulBatchDimensions:
         expected = X @ Y
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 4)
-        assert result.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == pp.SO3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -72,7 +73,7 @@ class TestSO3MulBatchDimensions:
         expected = X @ Y
 
         assert result.shape == expected.shape == (4,)
-        assert result.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == pp.SO3_type
         assert result.dtype == dtype
         torch.testing.assert_close(result.tensor(), expected.tensor(), **get_tolerances(dtype))
 
@@ -234,7 +235,7 @@ class TestSO3MulEdgeCases:
         result = SO3_Mul_fwd(X, Y)
 
         assert isinstance(result, pp.LieTensor)
-        assert result.ltype == pp.SO3_type
+        assert to_pypose_backend(result).ltype == pp.SO3_type
 
 
 class TestSO3MulErrors:

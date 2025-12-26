@@ -2,13 +2,14 @@ import warp as wp
 import pypose as pp
 from pypose.lietensor.lietensor import LieType
 
-from .ltype import warpSO3_type
+from .ltype import warpSO3_type, warpso3_type
 wp.init()
 
 
 _BACKEND_LIST: list[tuple[LieType, LieType | None]] = [
     # (Pypose LieType, Warp LieType)
     (pp.SO3_type  , warpSO3_type),
+    (pp.so3_type  , warpso3_type),
     (pp.SE3_type  , None),
     (pp.Sim3_type , None),
     (pp.RxSO3_type, None)

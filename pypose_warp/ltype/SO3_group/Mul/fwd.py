@@ -139,7 +139,8 @@ def SO3_Mul_fwd(X: pp.LieTensor, Y: pp.LieTensor) -> pp.LieTensor:
     if squeeze_output:
         out_tensor = out_tensor.squeeze(0)
     
-    return pp.LieTensor(out_tensor, ltype=pp.SO3_type)
+    from ... import warpSO3_type  # lazy import to avoid circular import
+    return pp.LieTensor(out_tensor, ltype=warpSO3_type)
 
 
 # =============================================================================

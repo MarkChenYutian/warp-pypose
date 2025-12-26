@@ -119,7 +119,8 @@ def SO3_Log_fwd(X: pp.LieTensor) -> pp.LieTensor:
     if squeeze_output:
         out_tensor = out_tensor.squeeze(0)
     
-    return pp.LieTensor(out_tensor, ltype=pp.so3_type)
+    from ... import warpso3_type  # lazy import to avoid circular import
+    return pp.LieTensor(out_tensor, ltype=warpso3_type)
 
 
 # =============================================================================

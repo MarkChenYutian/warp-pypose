@@ -2,6 +2,7 @@
 import pytest
 import torch
 import pypose as pp
+from pypose_warp import to_pypose_backend
 from pypose.lietensor.operation import so3_Jl_inv, SO3_Log
 from pypose_warp.ltype.SO3_group import SO3_Jinvp, SO3_Jinvp_fwd
 from conftest import get_tolerances
@@ -334,7 +335,7 @@ class TestSO3JinvpEdgeCases:
         result = SO3_Jinvp_fwd(so3, p)
 
         assert isinstance(result, pp.LieTensor)
-        assert result.ltype == pp.so3_type
+        assert to_pypose_backend(result).ltype == pp.so3_type
 
 
 class TestSO3JinvpErrors:

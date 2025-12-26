@@ -1,11 +1,10 @@
 import torch
 import pypose as pp
-from pypose.lietensor.utils import LieType
+from pypose.lietensor.lietensor import SO3Type
 
 from .Act    import SO3_Act, SO3_Act_fwd, SO3_Act_bwd
 from .Act4   import SO3_Act4, SO3_Act4_fwd, SO3_Act4_bwd
 from .Log    import SO3_Log, SO3_Log_fwd, SO3_Log_bwd
-from .Inv    import SO3_Inv, SO3_Inv_fwd, SO3_Inv_bwd
 from .Mul    import SO3_Mul, SO3_Mul_fwd, SO3_Mul_bwd
 from .AdjXa  import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
 from .AdjTXa import SO3_AdjTXa, SO3_AdjTXa_fwd, SO3_AdjTXa_bwd
@@ -13,17 +12,13 @@ from .Jinvp  import SO3_Jinvp, SO3_Jinvp_fwd, SO3_Jinvp_bwd
 from .Mat    import SO3_Mat, SO3_Mat_fwd, SO3_Mat_bwd
 
 
-class warp_SO3Type(LieType):
-    def __init__(self):
-        super().__init__(dimension=4, embedding=4, manifold=3)
-    
+class warp_SO3Type(SO3Type):
     def Log(self, X: pp.LieTensor) -> pp.LieTensor:
         return SO3_Log.apply(X)
     
     def Act(self, X: pp.LieTensor, p: torch.Tensor):
         assert not self.on_manifold and isinstance(p, torch.Tensor)
         assert p.shape[-1]==3 or p.shape[-1]==4, "Invalid Tensor Dimension"
-        
         out: torch.Tensor
         if p.shape[-1]==3:
             out = SO3_Act.apply(X, p)
@@ -40,11 +35,13 @@ class warp_SO3Type(LieType):
             return self.Act(X, Y)
         # (scalar or tensor) * manifold
         if self.on_manifold:
-            return pp.LieTensor(torch.mul(X.tensor(), Y), ltype=pp.SO3_type)
+            return pp.LieTensor(torch.mul(X.tensor(), Y), ltype=warpSO3_type)
         raise NotImplementedError('Invalid __mul__ operation')
 
-    def Inv(self, X: pp.LieTensor) -> pp.LieTensor:
-        return SO3_Inv.apply(X)
+    # NOTE: we don't override the Inv since pypose's original Inv is faster than Warp
+    #       (launching warp kernel incurs additional overhead)
+    # def Inv(self, X: pp.LieTensor) -> pp.LieTensor:
+    #     return SO3_Inv.apply(X)
     
     def Adj(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
         return SO3_AdjXa.apply(X, a)
