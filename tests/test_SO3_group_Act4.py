@@ -10,7 +10,7 @@ import pytest
 import torch
 import pypose as pp
 
-from conftest import get_tolerances
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
 
 # Import warp SO3_Act4
 from pypose_warp.ltype.SO3_group import SO3_Act4, SO3_Act4_fwd, SO3_Act4_bwd
@@ -25,7 +25,7 @@ class TestSO3Act4Fwd:
 
     def test_basic_1d(self, device, dtype):
         """Test basic 1D batch forward."""
-        tols = get_tolerances(dtype)
+        tols = get_fwd_tolerances(dtype, Operator.SO3_Act4)
 
         X = pp.randn_SO3(5, device=device, dtype=dtype)
         p = torch.randn(5, 4, device=device, dtype=dtype)
@@ -43,7 +43,7 @@ class TestSO3Act4Fwd:
 
     def test_basic_2d(self, device, dtype):
         """Test 2D batch forward."""
-        tols = get_tolerances(dtype)
+        tols = get_fwd_tolerances(dtype, Operator.SO3_Act4)
 
         X = pp.randn_SO3(3, 4, device=device, dtype=dtype)
         p = torch.randn(3, 4, 4, device=device, dtype=dtype)
@@ -60,7 +60,7 @@ class TestSO3Act4Fwd:
 
     def test_basic_3d(self, device, dtype):
         """Test 3D batch forward."""
-        tols = get_tolerances(dtype)
+        tols = get_fwd_tolerances(dtype, Operator.SO3_Act4)
 
         X = pp.randn_SO3(2, 3, 4, device=device, dtype=dtype)
         p = torch.randn(2, 3, 4, 4, device=device, dtype=dtype)
@@ -95,7 +95,7 @@ class TestSO3Act4Fwd:
 
     def test_fourth_component_unchanged(self, device, dtype):
         """Test that the 4th component is passed through unchanged."""
-        tols = get_tolerances(dtype)
+        tols = get_fwd_tolerances(dtype, Operator.SO3_Act4)
 
         X = pp.randn_SO3(5, device=device, dtype=dtype)
         p = torch.randn(5, 4, device=device, dtype=dtype)
@@ -113,10 +113,10 @@ class TestSO3Act4Fwd:
 class TestSO3Act4Bwd:
     """Tests for SO3_Act4 backward pass."""
 
-    def test_grad_shapes(self, device, dtype):
+    def test_grad_shapes(self, device, dtype_bwd):
         """Test that backward produces correct gradient shapes."""
-        X = pp.randn_SO3(5, device=device, dtype=dtype, requires_grad=True)
-        p = torch.randn(5, 4, device=device, dtype=dtype, requires_grad=True)
+        X = pp.randn_SO3(5, device=device, dtype=dtype_bwd, requires_grad=True)
+        p = torch.randn(5, 4, device=device, dtype=dtype_bwd, requires_grad=True)
 
         out = SO3_Act4.apply(X, p)
         loss = out.sum()
@@ -127,12 +127,12 @@ class TestSO3Act4Bwd:
         assert X.grad.shape == X.shape
         assert p.grad.shape == p.shape
 
-    def test_grad_p_fourth_component(self, device, dtype):
+    def test_grad_p_fourth_component(self, device, dtype_bwd):
         """Test that gradient for p[..., 3] is correctly passed through."""
-        tols = get_tolerances(dtype)
+        tols = get_bwd_tolerances(dtype_bwd, Operator.SO3_Act4)
 
-        X = pp.randn_SO3(5, device=device, dtype=dtype, requires_grad=True)
-        p = torch.randn(5, 4, device=device, dtype=dtype, requires_grad=True)
+        X = pp.randn_SO3(5, device=device, dtype=dtype_bwd, requires_grad=True)
+        p = torch.randn(5, 4, device=device, dtype=dtype_bwd, requires_grad=True)
 
         # Loss = sum(out)
         out = SO3_Act4.apply(X, p)
@@ -142,7 +142,7 @@ class TestSO3Act4Bwd:
         # Gradient of sum w.r.t. p[..., 3] should be 1
         torch.testing.assert_close(
             p.grad[..., 3], 
-            torch.ones(5, device=device, dtype=dtype),
+            torch.ones(5, device=device, dtype=dtype_bwd),
             **tols
         )
 
@@ -183,10 +183,10 @@ class TestSO3Act4Bwd:
 class TestSO3Act4BwdBroadcasting:
     """Tests for gradient reduction in broadcasting scenarios."""
 
-    def test_broadcast_X_single(self, device, dtype):
+    def test_broadcast_X_single(self, device, dtype_bwd):
         """Test gradient reduction when X has size 1."""
-        X = pp.randn_SO3(1, device=device, dtype=dtype, requires_grad=True)
-        p = torch.randn(5, 4, device=device, dtype=dtype, requires_grad=True)
+        X = pp.randn_SO3(1, device=device, dtype=dtype_bwd, requires_grad=True)
+        p = torch.randn(5, 4, device=device, dtype=dtype_bwd, requires_grad=True)
 
         out = SO3_Act4.apply(X, p)
         loss = out.sum()
@@ -196,10 +196,10 @@ class TestSO3Act4BwdBroadcasting:
         assert X.grad.shape == torch.Size([1, 4])
         assert p.grad.shape == torch.Size([5, 4])
 
-    def test_broadcast_p_single(self, device, dtype):
+    def test_broadcast_p_single(self, device, dtype_bwd):
         """Test gradient reduction when p has size 1."""
-        X = pp.randn_SO3(5, device=device, dtype=dtype, requires_grad=True)
-        p = torch.randn(1, 4, device=device, dtype=dtype, requires_grad=True)
+        X = pp.randn_SO3(5, device=device, dtype=dtype_bwd, requires_grad=True)
+        p = torch.randn(1, 4, device=device, dtype=dtype_bwd, requires_grad=True)
 
         out = SO3_Act4.apply(X, p)
         loss = out.sum()
@@ -209,10 +209,10 @@ class TestSO3Act4BwdBroadcasting:
         assert X.grad.shape == torch.Size([5, 4])
         assert p.grad.shape == torch.Size([1, 4])
 
-    def test_broadcast_2d_cross(self, device, dtype):
+    def test_broadcast_2d_cross(self, device, dtype_bwd):
         """Test gradient reduction with 2D cross-broadcasting."""
-        X = pp.randn_SO3(5, 1, device=device, dtype=dtype, requires_grad=True)
-        p = torch.randn(1, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        X = pp.randn_SO3(5, 1, device=device, dtype=dtype_bwd, requires_grad=True)
+        p = torch.randn(1, 3, 4, device=device, dtype=dtype_bwd, requires_grad=True)
 
         out = SO3_Act4.apply(X, p)
         loss = out.sum()
@@ -231,7 +231,7 @@ class TestWarpSO3TypeAct4:
 
     def test_act_dispatches_to_act4(self, device, dtype):
         """Test that Act correctly dispatches to Act4 for 4D points."""
-        tols = get_tolerances(dtype)
+        tols = get_fwd_tolerances(dtype, Operator.SO3_Act4)
 
         from pypose_warp.ltype.SO3_group import warpSO3_type
 

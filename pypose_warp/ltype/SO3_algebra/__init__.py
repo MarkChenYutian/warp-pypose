@@ -55,5 +55,11 @@ class warp_so3Type(so3Type):
         """
         return so3_Jr.apply(input)
 
+    @classmethod
+    def identity(cls, *size, **kwargs):
+        from ... import warpso3_type
+        data = torch.tensor([0., 0., 0.], **kwargs)
+        return pp.LieTensor(data.repeat(size+(1,)), ltype=warpso3_type)
+
 
 warpso3_type = warp_so3Type()

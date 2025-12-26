@@ -4,7 +4,7 @@ import torch
 import pypose as pp
 
 from pypose_warp.ltype.SO3_group import SO3_AdjTXa, SO3_AdjTXa_fwd
-from conftest import get_tolerances
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
 
 
 class TestSO3AdjTXaBatchDimensions:
@@ -20,7 +20,7 @@ class TestSO3AdjTXaBatchDimensions:
 
         assert result.shape == expected.shape == (5, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_2d_batch(self, device, dtype):
         """Test with 2D batch dimensions."""
@@ -32,7 +32,7 @@ class TestSO3AdjTXaBatchDimensions:
 
         assert result.shape == expected.shape == (3, 4, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_3d_batch(self, device, dtype):
         """Test with 3D batch dimensions."""
@@ -44,7 +44,7 @@ class TestSO3AdjTXaBatchDimensions:
 
         assert result.shape == expected.shape == (2, 3, 4, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_4d_batch(self, device, dtype):
         """Test with 4D batch dimensions."""
@@ -56,7 +56,7 @@ class TestSO3AdjTXaBatchDimensions:
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_scalar_no_batch(self, device, dtype):
         """Test with no batch dimensions (single element)."""
@@ -68,7 +68,7 @@ class TestSO3AdjTXaBatchDimensions:
 
         assert result.shape == expected.shape == (3,)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
 
 class TestSO3AdjTXaBroadcasting:
@@ -83,7 +83,7 @@ class TestSO3AdjTXaBroadcasting:
         expected = X.AdjT(a)
 
         assert result.shape == expected.shape == (5, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_broadcast_2d(self, device, dtype):
         """Test broadcasting with 2D batch."""
@@ -94,7 +94,7 @@ class TestSO3AdjTXaBroadcasting:
         expected = X.AdjT(a)
 
         assert result.shape == expected.shape == (5, 4, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_broadcast_3d(self, device, dtype):
         """Test broadcasting with 3D batch."""
@@ -105,7 +105,7 @@ class TestSO3AdjTXaBroadcasting:
         expected = X.AdjT(a)
 
         assert result.shape == expected.shape == (2, 3, 4, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
 
 class TestSO3AdjTXaPrecision:
@@ -120,7 +120,7 @@ class TestSO3AdjTXaPrecision:
         result = SO3_AdjTXa_fwd(X, a)
         expected = X.AdjT(a)
 
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_fp64_precision(self, device):
         """Test float64 precision and accuracy."""
@@ -131,7 +131,7 @@ class TestSO3AdjTXaPrecision:
         result = SO3_AdjTXa_fwd(X, a)
         expected = X.AdjT(a)
 
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_fp16_precision(self, device):
         """Test float16 precision and accuracy."""
@@ -142,7 +142,7 @@ class TestSO3AdjTXaPrecision:
         result = SO3_AdjTXa_fwd(X, a)
         expected = X.AdjT(a)
 
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_output_dtype_preserved(self, device, dtype):
         """Test that output dtype matches input dtype."""
@@ -165,7 +165,7 @@ class TestSO3AdjTXaEdgeCases:
         result = SO3_AdjTXa_fwd(X, a)
 
         # R^T @ a = I^T @ a = a for identity rotation
-        torch.testing.assert_close(result, a, **get_tolerances(dtype))
+        torch.testing.assert_close(result, a, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_zero_vector(self, device, dtype):
         """Test that rotating zero vector gives zero."""
@@ -174,7 +174,7 @@ class TestSO3AdjTXaEdgeCases:
 
         result = SO3_AdjTXa_fwd(X, a)
 
-        torch.testing.assert_close(result, a, **get_tolerances(dtype))
+        torch.testing.assert_close(result, a, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_single_element_batch(self, device):
         """Test with batch size of 1."""
@@ -218,7 +218,7 @@ class TestSO3AdjTXaEdgeCases:
         result = SO3_AdjTXa_fwd(X, a)
         expected = X.Inv().Adj(a)
 
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
 
 class TestSO3AdjTXaErrors:
@@ -265,7 +265,7 @@ class TestSO3AdjTXaAutogradFunction:
         expected = X.AdjT(a)
 
         assert result.shape == expected.shape == (5, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_apply_2d_batch(self, device, dtype):
         """Test SO3_AdjTXa.apply with 2D batch."""
@@ -276,7 +276,7 @@ class TestSO3AdjTXaAutogradFunction:
         expected = X.AdjT(a)
 
         assert result.shape == expected.shape == (3, 4, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
 
 # =============================================================================
@@ -286,10 +286,10 @@ class TestSO3AdjTXaAutogradFunction:
 class TestSO3AdjTXaBwdBatchDimensions:
     """Test SO3_AdjTXa backward with various batch dimensions."""
 
-    def test_1d_batch(self, device, dtype):
+    def test_1d_batch(self, device, dtype_bwd):
         """Test backward with 1D batch dimension."""
-        X_data = pp.randn_SO3(5, device=device, dtype=dtype)
-        a_data = pp.randn_so3(5, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(5, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(5, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -303,13 +303,13 @@ class TestSO3AdjTXaBwdBatchDimensions:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (5, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (5, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_2d_batch(self, device, dtype):
+    def test_2d_batch(self, device, dtype_bwd):
         """Test backward with 2D batch dimensions."""
-        X_data = pp.randn_SO3(3, 4, device=device, dtype=dtype)
-        a_data = pp.randn_so3(3, 4, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(3, 4, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(3, 4, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -323,13 +323,13 @@ class TestSO3AdjTXaBwdBatchDimensions:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (3, 4, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (3, 4, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_3d_batch(self, device, dtype):
+    def test_3d_batch(self, device, dtype_bwd):
         """Test backward with 3D batch dimensions."""
-        X_data = pp.randn_SO3(2, 3, 4, device=device, dtype=dtype)
-        a_data = pp.randn_so3(2, 3, 4, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(2, 3, 4, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(2, 3, 4, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -343,13 +343,13 @@ class TestSO3AdjTXaBwdBatchDimensions:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (2, 3, 4, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (2, 3, 4, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_4d_batch(self, device, dtype):
+    def test_4d_batch(self, device, dtype_bwd):
         """Test backward with 4D batch dimensions."""
-        X_data = pp.randn_SO3(2, 2, 3, 4, device=device, dtype=dtype)
-        a_data = pp.randn_so3(2, 2, 3, 4, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(2, 2, 3, 4, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(2, 2, 3, 4, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -363,13 +363,13 @@ class TestSO3AdjTXaBwdBatchDimensions:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (2, 2, 3, 4, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (2, 2, 3, 4, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_scalar_no_batch(self, device, dtype):
+    def test_scalar_no_batch(self, device, dtype_bwd):
         """Test backward with no batch dimensions."""
-        X_data = pp.randn_SO3(device=device, dtype=dtype)
-        a_data = pp.randn_so3(device=device, dtype=dtype)
+        X_data = pp.randn_SO3(device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -383,17 +383,17 @@ class TestSO3AdjTXaBwdBatchDimensions:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (4,)
         assert a_ours.grad.shape == a_ref.grad.shape == (3,)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
 
 class TestSO3AdjTXaBwdBroadcasting:
     """Test SO3_AdjTXa backward with broadcasting."""
 
-    def test_broadcast_X_singleton(self, device, dtype):
+    def test_broadcast_X_singleton(self, device, dtype_bwd):
         """Test backward with X broadcast from singleton."""
-        X_data = pp.randn_SO3(1, device=device, dtype=dtype)
-        a_data = pp.randn_so3(5, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(1, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(5, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -407,13 +407,13 @@ class TestSO3AdjTXaBwdBroadcasting:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (1, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (5, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_broadcast_a_singleton(self, device, dtype):
+    def test_broadcast_a_singleton(self, device, dtype_bwd):
         """Test backward with a broadcast from singleton."""
-        X_data = pp.randn_SO3(5, device=device, dtype=dtype)
-        a_data = pp.randn_so3(1, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(5, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(1, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -427,13 +427,13 @@ class TestSO3AdjTXaBwdBroadcasting:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (5, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (1, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_broadcast_2d_cross(self, device, dtype):
+    def test_broadcast_2d_cross(self, device, dtype_bwd):
         """Test backward with 2D cross broadcast."""
-        X_data = pp.randn_SO3(5, 1, device=device, dtype=dtype)
-        a_data = pp.randn_so3(1, 4, device=device, dtype=dtype)
+        X_data = pp.randn_SO3(5, 1, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(1, 4, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -447,13 +447,13 @@ class TestSO3AdjTXaBwdBroadcasting:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (5, 1, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (1, 4, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_broadcast_different_ndim(self, device, dtype):
+    def test_broadcast_different_ndim(self, device, dtype_bwd):
         """Test backward with different number of batch dimensions."""
-        X_data = pp.randn_SO3(5, device=device, dtype=dtype)  # shape (5, 4)
-        a_data = pp.randn_so3(3, 1, device=device, dtype=dtype)  # shape (3, 1, 3)
+        X_data = pp.randn_SO3(5, device=device, dtype=dtype_bwd)  # shape (5, 4)
+        a_data = pp.randn_so3(3, 1, device=device, dtype=dtype_bwd)  # shape (3, 1, 3)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -467,18 +467,17 @@ class TestSO3AdjTXaBwdBroadcasting:
 
         assert X_ours.grad.shape == X_ref.grad.shape == (5, 4)
         assert a_ours.grad.shape == a_ref.grad.shape == (3, 1, 3)
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
 
 class TestSO3AdjTXaBwdPrecision:
     """Test SO3_AdjTXa backward precision handling."""
 
-    def test_fp32_precision(self, device):
-        """Test backward float32 precision."""
-        dtype = torch.float32
-        X_data = pp.randn_SO3(10, device=device, dtype=dtype)
-        a_data = pp.randn_so3(10, device=device, dtype=dtype)
+    def test_precision(self, device, dtype_bwd):
+        """Test backward precision."""
+        X_data = pp.randn_SO3(10, device=device, dtype=dtype_bwd)
+        a_data = pp.randn_so3(10, device=device, dtype=dtype_bwd)
 
         X_ours = X_data.clone().requires_grad_(True)
         a_ours = a_data.clone().requires_grad_(True)
@@ -490,66 +489,28 @@ class TestSO3AdjTXaBwdPrecision:
         result_ref = X_ref.AdjT(a_ref)
         result_ref.sum().backward()
 
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype_bwd, Operator.SO3_AdjTXa))
 
-    def test_fp64_precision(self, device):
-        """Test backward float64 precision."""
-        dtype = torch.float64
-        X_data = pp.randn_SO3(10, device=device, dtype=dtype)
-        a_data = pp.randn_so3(10, device=device, dtype=dtype)
-
-        X_ours = X_data.clone().requires_grad_(True)
-        a_ours = a_data.clone().requires_grad_(True)
-        result_ours = SO3_AdjTXa.apply(X_ours, a_ours)
-        result_ours.sum().backward()
-
-        X_ref = X_data.clone().requires_grad_(True)
-        a_ref = a_data.clone().requires_grad_(True)
-        result_ref = X_ref.AdjT(a_ref)
-        result_ref.sum().backward()
-
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
-
-    def test_fp16_precision(self, device):
-        """Test backward float16 precision."""
-        dtype = torch.float16
-        X_data = pp.randn_SO3(10, device=device, dtype=dtype)
-        a_data = pp.randn_so3(10, device=device, dtype=dtype)
-
-        X_ours = X_data.clone().requires_grad_(True)
-        a_ours = a_data.clone().requires_grad_(True)
-        result_ours = SO3_AdjTXa.apply(X_ours, a_ours)
-        result_ours.sum().backward()
-
-        X_ref = X_data.clone().requires_grad_(True)
-        a_ref = a_data.clone().requires_grad_(True)
-        result_ref = X_ref.AdjT(a_ref)
-        result_ref.sum().backward()
-
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
-
-    def test_grad_dtype_preserved(self, device, dtype):
+    def test_grad_dtype_preserved(self, device, dtype_bwd):
         """Test that gradient dtype matches input dtype."""
-        X = pp.randn_SO3(5, device=device, dtype=dtype).requires_grad_(True)
-        a = pp.randn_so3(5, device=device, dtype=dtype).requires_grad_(True)
+        X = pp.randn_SO3(5, device=device, dtype=dtype_bwd).requires_grad_(True)
+        a = pp.randn_so3(5, device=device, dtype=dtype_bwd).requires_grad_(True)
 
         result = SO3_AdjTXa.apply(X, a)
         result.sum().backward()
 
-        assert X.grad.dtype == dtype
-        assert a.grad.dtype == dtype
+        assert X.grad.dtype == dtype_bwd
+        assert a.grad.dtype == dtype_bwd
 
 
 class TestSO3AdjTXaBwdEdgeCases:
     """Test SO3_AdjTXa backward edge cases."""
 
-    def test_quaternion_w_component_zero(self, device, dtype):
+    def test_quaternion_w_component_zero(self, device, dtype_bwd):
         """Test that quaternion gradient w component is always zero."""
-        X = pp.randn_SO3(5, device=device, dtype=dtype).requires_grad_(True)
-        a = pp.randn_so3(5, device=device, dtype=dtype).requires_grad_(True)
+        X = pp.randn_SO3(5, device=device, dtype=dtype_bwd).requires_grad_(True)
+        a = pp.randn_so3(5, device=device, dtype=dtype_bwd).requires_grad_(True)
 
         result = SO3_AdjTXa.apply(X, a)
         result.sum().backward()
@@ -573,8 +534,8 @@ class TestSO3AdjTXaBwdEdgeCases:
         result_ref = X_ref.AdjT(a_ref)
         result_ref.sum().backward()
 
-        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_tolerances(dtype))
-        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_tolerances(dtype))
+        torch.testing.assert_close(X_ours.grad, X_ref.grad, **get_bwd_tolerances(dtype, Operator.SO3_AdjTXa))
+        torch.testing.assert_close(a_ours.grad, a_ref.grad, **get_bwd_tolerances(dtype, Operator.SO3_AdjTXa))
 
     def test_grad_device(self, device):
         """Test that gradients are on the correct device."""

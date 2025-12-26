@@ -3,26 +3,7 @@ import pytest
 import torch
 import pypose as pp
 from pypose_warp.ltype.SO3_group import SO3_Mat, SO3_Mat_fwd
-from conftest import get_tolerances
-
-
-def get_bwd_tolerances(dtype: torch.dtype) -> dict:
-    """
-    Get appropriate atol/rtol for backward tests.
-    
-    Note: The backward pass for SO3_Mat computes the true numerical gradient
-    of the quaternion-to-matrix conversion. This differs from PyPose's backward
-    which uses a Lie algebra tangent space gradient. Our implementation matches
-    the numerical gradient of the forward pass (verified via torch.autograd.gradcheck).
-    """
-    if dtype == torch.float16:
-        return {"atol": 1e-1, "rtol": 1e-1}
-    elif dtype == torch.float32:
-        return {"atol": 1e-4, "rtol": 1e-4}
-    elif dtype == torch.float64:
-        return {"atol": 1e-10, "rtol": 1e-10}
-    else:
-        raise NotImplementedError(f"Unimplemented for {dtype=}")
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
 
 
 class TestSO3MatBatchDimensions:
@@ -37,7 +18,7 @@ class TestSO3MatBatchDimensions:
         
         assert result.shape == expected.shape == (5, 3, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_2d_batch(self, device, dtype):
         """Test with 2D batch dimensions."""
@@ -48,7 +29,7 @@ class TestSO3MatBatchDimensions:
         
         assert result.shape == expected.shape == (3, 4, 3, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_3d_batch(self, device, dtype):
         """Test with 3D batch dimensions."""
@@ -59,7 +40,7 @@ class TestSO3MatBatchDimensions:
         
         assert result.shape == expected.shape == (2, 3, 4, 3, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_4d_batch(self, device, dtype):
         """Test with 4D batch dimensions."""
@@ -70,7 +51,7 @@ class TestSO3MatBatchDimensions:
         
         assert result.shape == expected.shape == (2, 2, 3, 4, 3, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_scalar_no_batch(self, device, dtype):
         """Test with no batch dimensions (scalar input)."""
@@ -81,7 +62,7 @@ class TestSO3MatBatchDimensions:
         
         assert result.shape == expected.shape == (3, 3)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
 
 class TestSO3MatPrecision:
@@ -94,7 +75,7 @@ class TestSO3MatPrecision:
         result = SO3_Mat_fwd(so3)
         expected = so3.matrix()
         
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_output_dtype_preserved(self, device, dtype):
         """Test that output dtype matches input dtype."""
@@ -114,7 +95,7 @@ class TestSO3MatEdgeCases:
         result = SO3_Mat_fwd(so3)
         expected = torch.eye(3, device=device, dtype=dtype).expand(5, 3, 3)
         
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_180_degree_rotation_x(self, device):
         """Test 180 degree rotation around x-axis."""
@@ -189,7 +170,7 @@ class TestSO3MatEdgeCases:
         expected = so3.matrix()
         
         assert result.shape == expected.shape == (1, 3, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_large_batch(self, device, dtype):
         """Test with a large batch size."""
@@ -199,7 +180,7 @@ class TestSO3MatEdgeCases:
         expected = so3.matrix()
         
         assert result.shape == expected.shape == (1000, 3, 3)
-        torch.testing.assert_close(result, expected, **get_tolerances(dtype))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype))
 
     def test_output_device(self, device, dtype):
         """Test that output device matches input device."""
@@ -275,23 +256,19 @@ class TestSO3MatBwdEdgeCases:
         assert not torch.isnan(so3.grad).any()
         assert not torch.isinf(so3.grad).any()
 
-    def test_grad_dtype_preserved(self, device, dtype):
+    def test_grad_dtype_preserved(self, device, dtype_bwd):
         """Test that gradient dtype matches input dtype."""
-        if dtype == torch.float16:
-            pytest.skip("float16 backward not reliably supported")
-        so3 = pp.randn_SO3(5, device=device, dtype=dtype)
+        so3 = pp.randn_SO3(5, device=device, dtype=dtype_bwd)
         so3.requires_grad_(True)
         
         result = SO3_Mat.apply(so3)
         result.sum().backward()
         
-        assert so3.grad.dtype == dtype
+        assert so3.grad.dtype == dtype_bwd
 
-    def test_grad_device_preserved(self, device, dtype):
+    def test_grad_device_preserved(self, device, dtype_bwd):
         """Test that gradient device matches input device."""
-        if dtype == torch.float16:
-            pytest.skip("float16 backward not reliably supported")
-        so3 = pp.randn_SO3(5, device=device, dtype=dtype)
+        so3 = pp.randn_SO3(5, device=device, dtype=dtype_bwd)
         so3.requires_grad_(True)
         
         result = SO3_Mat.apply(so3)
@@ -299,11 +276,9 @@ class TestSO3MatBwdEdgeCases:
         
         assert str(so3.grad.device).startswith(device)
 
-    def test_large_batch_gradient(self, device, dtype):
+    def test_large_batch_gradient(self, device, dtype_bwd):
         """Test backward with a large batch size."""
-        if dtype == torch.float16:
-            pytest.skip("float16 backward not reliably supported")
-        so3 = pp.randn_SO3(1000, device=device, dtype=dtype)
+        so3 = pp.randn_SO3(1000, device=device, dtype=dtype_bwd)
         so3.requires_grad_(True)
         
         result = SO3_Mat.apply(so3)
