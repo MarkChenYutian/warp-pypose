@@ -3,7 +3,6 @@ import pypose as pp
 from pypose.lietensor.lietensor import LieType
 
 from .ltype import warpSO3_type
-from .utils.log import LogWriter
 wp.init()
 
 
@@ -25,12 +24,6 @@ def to_warp_backend(x: pp.LieTensor) -> pp.LieTensor:
     
     if wp_ltype is None:
         raise NotImplementedError(f"Warp backend not implemented for pypose LieType {x.ltype}.")
-    
-    if x.requires_grad:
-        raise NotImplementedError(f"Warp backend not implemented the auto differentiation.")
-    
-    # if x.is_cuda:
-    #     LogWriter.warning("[PERF_WARNING] Warp backend shows small performance gain on CUDA tensor. It's best used (2x speedup) with CPU tensors.")
     
     return pp.LieTensor(x.tensor(), ltype=wp_ltype)
 

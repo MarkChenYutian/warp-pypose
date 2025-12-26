@@ -42,3 +42,82 @@ def so3_Jl_inv(dtype):
         
         return I - dtype(0.5) * K + coef2 * (K @ K)
     return implement
+
+
+# =============================================================================
+# Helper function for computing so3_Jl (left Jacobian)
+#
+# Formula: Jl = I + coef1 * K + coef2 * (K @ K)
+# where:
+#   K = skew(x) - 3x3 skew-symmetric matrix
+#   theta = ||x||
+#   coef1 = (1 - cos(theta)) / theta^2  if theta > eps
+#   coef1 = 0.5 - (1/24) * theta^2  otherwise (Taylor expansion)
+#   coef2 = (theta - sin(theta)) / theta^3  if theta > eps
+#   coef2 = 1/6 - (1/120) * theta^2  otherwise (Taylor expansion)
+# =============================================================================
+
+def so3_Jl(dtype):
+    @wp.func
+    def implement(x: T.Any) -> T.Any:
+        """Compute left Jacobian for so3."""
+        theta = wp.length(x)
+        K = wp.skew(x)
+        I = wp.identity(n=3, dtype=dtype)
+        
+        eps = dtype(1e-6)
+        theta2 = theta * theta
+        
+        coef1 = dtype(0.0)
+        coef2 = dtype(0.0)
+        
+        if theta > eps:
+            coef1 = (dtype(1.0) - wp.cos(theta)) / theta2
+            coef2 = (theta - wp.sin(theta)) / (theta * theta2)
+        else:
+            # Taylor expansion for small theta
+            coef1 = dtype(0.5) - (dtype(1.0) / dtype(24.0)) * theta2
+            coef2 = dtype(1.0) / dtype(6.0) - (dtype(1.0) / dtype(120.0)) * theta2
+        
+        return I + coef1 * K + coef2 * (K @ K)
+    return implement
+
+
+# =============================================================================
+# Helper function: so3 (axis-angle) -> quaternion (Exp map)
+#
+# For axis-angle x with theta = ||x||:
+#   quaternion = (x * sin(theta/2) / theta, cos(theta/2))
+# For small theta, use Taylor expansion.
+# =============================================================================
+
+def so3_exp_wp_func(dtype):
+    @wp.func
+    def implement(x: T.Any) -> T.Any:
+        """Compute exponential map from so3 to SO3 (quaternion)."""
+        theta = wp.length(x)
+        theta2 = theta * theta
+        theta4 = theta2 * theta2
+        theta_half = dtype(0.5) * theta
+        
+        eps = dtype(1e-6)
+        
+        imag_factor = dtype(0.0)
+        real_factor = dtype(0.0)
+        
+        if theta > eps:
+            imag_factor = wp.sin(theta_half) / theta
+            real_factor = wp.cos(theta_half)
+        else:
+            # Taylor expansion for small theta
+            imag_factor = dtype(0.5) - (dtype(1.0) / dtype(48.0)) * theta2 + (dtype(1.0) / dtype(3840.0)) * theta4
+            real_factor = dtype(1.0) - (dtype(1.0) / dtype(8.0)) * theta2 + (dtype(1.0) / dtype(384.0)) * theta4
+        
+        # Quaternion format: (x, y, z, w)
+        qx = x[0] * imag_factor
+        qy = x[1] * imag_factor
+        qz = x[2] * imag_factor
+        qw = real_factor
+        
+        return wp.quaternion(qx, qy, qz, qw)
+    return implement

@@ -9,6 +9,8 @@ from .Inv    import SO3_Inv, SO3_Inv_fwd, SO3_Inv_bwd
 from .Mul    import SO3_Mul, SO3_Mul_fwd, SO3_Mul_bwd
 from .AdjXa  import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
 from .AdjTXa import SO3_AdjTXa, SO3_AdjTXa_fwd, SO3_AdjTXa_bwd
+from .Jinvp  import SO3_Jinvp, SO3_Jinvp_fwd, SO3_Jinvp_bwd
+from .Mat    import SO3_Mat, SO3_Mat_fwd, SO3_Mat_bwd
 
 
 class warp_SO3Type(LieType):
@@ -49,5 +51,24 @@ class warp_SO3Type(LieType):
 
     def AdjT(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
         return SO3_AdjTXa.apply(X, a)
+
+    def Jinvp(self, X: pp.LieTensor, p: pp.LieTensor) -> pp.LieTensor:
+        p_tensor = p.tensor() if isinstance(p, pp.LieTensor) else p
+        return SO3_Jinvp.apply(X, p_tensor)
+
+    def matrix(self, input: pp.LieTensor) -> torch.Tensor:
+        """
+        Convert SO3 quaternion to 3x3 rotation matrix.
+        
+        This is more efficient than PyPose's default implementation which uses:
+            I = eye(3); return input.Act(I).transpose(-1,-2)
+        
+        Args:
+            input: SO3 LieTensor of shape (..., 4) - quaternion representation
+            
+        Returns:
+            Rotation matrix of shape (..., 3, 3)
+        """
+        return SO3_Mat.apply(input)
 
 warpSO3_type = warp_SO3Type()
