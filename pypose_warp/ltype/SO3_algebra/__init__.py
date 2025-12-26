@@ -4,6 +4,7 @@ from pypose.lietensor.lietensor import so3Type
 
 from .Exp import so3_Exp, so3_Exp_fwd, so3_Exp_bwd
 from .Mat import so3_Mat, so3_Mat_fwd, so3_Mat_bwd
+from .Jr import so3_Jr, so3_Jr_fwd, so3_Jr_bwd
 
 
 class warp_so3Type(so3Type):    
@@ -33,6 +34,26 @@ class warp_so3Type(so3Type):
             Rotation matrix of shape (..., 3, 3)
         """
         return so3_Mat.apply(input)
+
+    def Jr(self, input: pp.LieTensor) -> torch.Tensor:
+        """
+        Compute the right Jacobian Jr of so3.
+        
+        The right Jacobian relates infinitesimal perturbations to the exponential map:
+            Exp(x + dx) ≈ Exp(x) @ Exp(Jr(x) @ dx)
+        
+        Formula:
+            Jr = I - (1 - cos(θ)) / θ² * K + (θ - sin(θ)) / θ³ * K @ K
+        
+        where K = skew(x) and θ = ||x||.
+        
+        Args:
+            input: so3 LieTensor of shape (..., 3) - axis-angle representation
+            
+        Returns:
+            Right Jacobian tensor of shape (..., 3, 3)
+        """
+        return so3_Jr.apply(input)
 
 
 warpso3_type = warp_so3Type()
