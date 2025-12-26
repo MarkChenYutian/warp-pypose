@@ -18,6 +18,14 @@ def wp_vec3_type(dtype: torch.dtype):
         case _: raise NotImplementedError()
 
 
+def wp_vec4_type(dtype: torch.dtype):
+    match dtype:
+        case torch.float64: return wp.vec4d
+        case torch.float32: return wp.vec4f
+        case torch.float16: return wp.vec4h
+        case _: raise NotImplementedError()
+
+
 def wp_mat33_type(dtype: torch.dtype):
     match dtype:
         case torch.float64: return wp.mat33d

@@ -7,16 +7,7 @@ import typing as T
 import pypose as pp
 
 from ....utils.warp_utils import wp_quat_type, wp_vec3_type
-
-
-# =============================================================================
-# Helper function: quaternion -> axis-angle (so3 Lie algebra)
-# =============================================================================
-
-@wp.func
-def SO3_log_wp_func(q: T.Any):
-    axis, angle = wp.quat_to_axis_angle(q)
-    return axis * angle
+from ...common.warp_functions import SO3_log_wp_func
 
 
 # =============================================================================

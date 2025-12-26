@@ -2,17 +2,21 @@ import torch
 import pypose as pp
 from pypose.lietensor.utils import LieType
 
-from .Act   import SO3_Act, SO3_Act_fwd, SO3_Act_bwd
-from .Log   import SO3_Log, SO3_Log_fwd, SO3_Log_bwd
-from .Inv   import SO3_Inv, SO3_Inv_fwd, SO3_Inv_bwd
-from .Mul   import SO3_Mul, SO3_Mul_fwd, SO3_Mul_bwd
-from .AdjXa import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
+from .Act    import SO3_Act, SO3_Act_fwd, SO3_Act_bwd
+from .Act4   import SO3_Act4, SO3_Act4_fwd, SO3_Act4_bwd
+from .Log    import SO3_Log, SO3_Log_fwd, SO3_Log_bwd
+from .Inv    import SO3_Inv, SO3_Inv_fwd, SO3_Inv_bwd
+from .Mul    import SO3_Mul, SO3_Mul_fwd, SO3_Mul_bwd
+from .AdjXa  import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
 from .AdjTXa import SO3_AdjTXa, SO3_AdjTXa_fwd, SO3_AdjTXa_bwd
 
 
 class warp_SO3Type(LieType):
     def __init__(self):
         super().__init__(dimension=4, embedding=4, manifold=3)
+    
+    def Log(self, X: pp.LieTensor) -> pp.LieTensor:
+        return SO3_Log.apply(X)
     
     def Act(self, X: pp.LieTensor, p: torch.Tensor):
         assert not self.on_manifold and isinstance(p, torch.Tensor)
@@ -22,14 +26,8 @@ class warp_SO3Type(LieType):
         if p.shape[-1]==3:
             out = SO3_Act.apply(X, p)
         else:
-            raise NotImplementedError("SO3_Act4 not implemented yet!")
+            out = SO3_Act4.apply(X, p)
         return out
-    
-    def Log(self, X: pp.LieTensor) -> pp.LieTensor:
-        return SO3_Log.apply(X)
-    
-    def Inv(self, X: pp.LieTensor) -> pp.LieTensor:
-        return SO3_Inv.apply(X)
     
     def Mul(self, X: pp.LieTensor, Y):
         # Transform on transform (LieTensor @ LieTensor)
@@ -43,6 +41,9 @@ class warp_SO3Type(LieType):
             return pp.LieTensor(torch.mul(X.tensor(), Y), ltype=pp.SO3_type)
         raise NotImplementedError('Invalid __mul__ operation')
 
+    def Inv(self, X: pp.LieTensor) -> pp.LieTensor:
+        return SO3_Inv.apply(X)
+    
     def Adj(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
         return SO3_AdjXa.apply(X, a)
 
