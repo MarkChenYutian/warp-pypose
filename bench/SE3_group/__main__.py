@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Act, Act4
+from . import Act, Act4, Inv, Mul
 
 
 # ============================================================================
@@ -88,6 +88,18 @@ OPERATORS = [
         name="Act4",
         bench_forward=Act4.bench_forward,
         bench_backward=Act4.bench_backward,
+        has_kind=True,
+    ),
+    OperatorInfo(
+        name="Inv",
+        bench_forward=Inv.bench_forward,
+        bench_backward=Inv.bench_backward,
+        has_kind=False,
+    ),
+    OperatorInfo(
+        name="Mul",
+        bench_forward=Mul.bench_forward,
+        bench_backward=Mul.bench_backward,
         has_kind=True,
     ),
 ]
