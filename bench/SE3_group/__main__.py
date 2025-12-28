@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Act, Act4, Inv, Mul, AdjXa
+from . import Act, Act4, Inv, Mul, AdjXa, AdjTXa, Jinvp
 
 
 # ============================================================================
@@ -106,6 +106,18 @@ OPERATORS = [
         name="AdjXa",
         bench_forward=AdjXa.bench_forward,
         bench_backward=AdjXa.bench_backward,
+        has_kind=False,
+    ),
+    OperatorInfo(
+        name="AdjTXa",
+        bench_forward=AdjTXa.bench_forward,
+        bench_backward=AdjTXa.bench_backward,
+        has_kind=False,
+    ),
+    OperatorInfo(
+        name="Jinvp",
+        bench_forward=Jinvp.bench_forward,
+        bench_backward=Jinvp.bench_backward,
         has_kind=False,
     ),
 ]

@@ -42,6 +42,8 @@ class Operator(Enum):
     SE3_Inv = "SE3_Inv"
     SE3_Mul = "SE3_Mul"
     SE3_AdjXa = "SE3_AdjXa"
+    SE3_AdjTXa = "SE3_AdjTXa"
+    SE3_Jinvp = "SE3_Jinvp"
 
 
 # =============================================================================
@@ -64,6 +66,11 @@ _BWD_DEFAULTS = {
 # Operator-specific forward overrides
 _FWD_OVERRIDES: dict[Operator, dict[torch.dtype, dict]] = {
     Operator.so3_Jr: {torch.float32: {"atol": 1e-4, "rtol": 1e-4}},
+    # SE3_Jinvp involves multiple complex operations (Log, Jl_inv, calcQ) accumulating error
+    Operator.SE3_Jinvp: {
+        torch.float32: {"atol": 5e-4, "rtol": 5e-4},
+        torch.float64: {"atol": 1e-9, "rtol": 1e-9},
+    },
 }
 
 # Operator-specific backward overrides

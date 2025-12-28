@@ -10,49 +10,44 @@ from ....utils.warp_utils import wp_transform_type, wp_vec3_type
 
 
 # =============================================================================
-# SE3_AdjXa Forward Pass
+# SE3_AdjTXa Forward Pass
 #
 # SE3 element X has shape (..., 7): [t_x, t_y, t_z, q_x, q_y, q_z, q_w]
 # se3 algebra element a has shape (..., 6): [v_x, v_y, v_z, w_x, w_y, w_z]
 #   where v is linear velocity and w is angular velocity
 #
-# Adjoint action: out = Adj(X) @ a
+# "AdjT" in PyPose is Adj(X^{-1}) @ a, NOT the matrix transpose Adj^T(X) @ a.
 #
-# The SE3 adjoint matrix Adj(X) is 6x6:
-#   Adj = [R,     skew(t) @ R]
-#         [0,          R     ]
+# For SE3, X^{-1} has:
+#   t_inv = -R^T @ t
+#   q_inv = conjugate(q)  (which gives R_inv = R^T)
 #
-# where R is the 3x3 rotation matrix from quaternion and t is translation.
-#
-# Expanding the matrix-vector multiplication:
-#   out[:3] = R @ a[:3] + skew(t) @ R @ a[3:6]
-#           = R @ a[:3] + t x (R @ a[3:6])
-#   out[3:6] = R @ a[3:6]
+# So Adj(X^{-1}) @ a:
+#   out[:3] = R_inv @ a[:3] + t_inv × (R_inv @ a[3:6])
+#           = R^T @ a[:3] + (-R^T @ t) × (R^T @ a[3:6])
+#           = R^T @ a[:3] - (R^T @ t) × (R^T @ a[3:6])
+#   out[3:6] = R_inv @ a[3:6]
+#            = R^T @ a[3:6]
 # =============================================================================
 
 
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-
-def _make_se3_adjxa(dtype):
+def _make_se3_adjtxa(dtype):
     """
-    Factory function to create dtype-specific SE3 AdjXa function.
+    Factory function to create dtype-specific SE3 AdjTXa function.
     
     Args:
         dtype: Warp scalar type (wp.float16, wp.float32, wp.float64)
         
     Returns:
-        se3_adjxa warp function
+        se3_adjtxa warp function
     """
     
     @wp.func
-    def se3_adjxa(X: T.Any, a_linear: T.Any, a_angular: T.Any) -> T.Any:
+    def se3_adjtxa(X: T.Any, a_linear: T.Any, a_angular: T.Any) -> T.Any:
         """
-        Compute Adj(X) @ a where X is SE3 and a is se3 (6-vector).
+        Compute Adj(X^{-1}) @ a where X is SE3 and a is se3 (6-vector).
+        
+        This is PyPose's "AdjT" operation (NOT the matrix transpose).
         
         Args:
             X: SE3 transform
@@ -66,27 +61,31 @@ def _make_se3_adjxa(dtype):
         t = wp.transform_get_translation(X)
         q = wp.transform_get_rotation(X)
         R = wp.quat_to_matrix(q)
+        RT = wp.transpose(R)  # R^T = R_inv for rotation matrices
         
-        # R @ a[3:6] (angular part rotated)
-        R_a_angular = R @ a_angular
+        # Compute t_inv = -R^T @ t
+        t_inv = -(RT @ t)
         
-        # out[3:6] = R @ a[3:6]
-        out_angular = R_a_angular
+        # R^T @ a[3:6] (angular part rotated by inverse)
+        RT_a_angular = RT @ a_angular
         
-        # out[:3] = R @ a[:3] + t x (R @ a[3:6])
-        out_linear = R @ a_linear + wp.cross(t, R_a_angular)
+        # out[3:6] = R^T @ a[3:6]
+        out_angular = RT_a_angular
+        
+        # out[:3] = R^T @ a[:3] + t_inv × (R^T @ a[3:6])
+        out_linear = RT @ a_linear + wp.cross(t_inv, RT_a_angular)
         
         return out_linear, out_angular
     
-    return se3_adjxa
+    return se3_adjtxa
 
 
 # =============================================================================
 # Kernel factories for different batch dimensions (1D to 4D)
 # =============================================================================
 
-def SE3_AdjXa_fwd_kernel_1d(dtype):
-    se3_adjxa = _make_se3_adjxa(dtype)
+def SE3_AdjTXa_fwd_kernel_1d(dtype):
+    se3_adjtxa = _make_se3_adjtxa(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -97,14 +96,14 @@ def SE3_AdjXa_fwd_kernel_1d(dtype):
         out_angular: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        ol, oa = se3_adjxa(X[i], a_linear[i], a_angular[i])
+        ol, oa = se3_adjtxa(X[i], a_linear[i], a_angular[i])
         out_linear[i] = ol
         out_angular[i] = oa
     return implement
 
 
-def SE3_AdjXa_fwd_kernel_2d(dtype):
-    se3_adjxa = _make_se3_adjxa(dtype)
+def SE3_AdjTXa_fwd_kernel_2d(dtype):
+    se3_adjtxa = _make_se3_adjtxa(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -115,14 +114,14 @@ def SE3_AdjXa_fwd_kernel_2d(dtype):
         out_angular: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        ol, oa = se3_adjxa(X[i, j], a_linear[i, j], a_angular[i, j])
+        ol, oa = se3_adjtxa(X[i, j], a_linear[i, j], a_angular[i, j])
         out_linear[i, j] = ol
         out_angular[i, j] = oa
     return implement
 
 
-def SE3_AdjXa_fwd_kernel_3d(dtype):
-    se3_adjxa = _make_se3_adjxa(dtype)
+def SE3_AdjTXa_fwd_kernel_3d(dtype):
+    se3_adjtxa = _make_se3_adjtxa(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -133,14 +132,14 @@ def SE3_AdjXa_fwd_kernel_3d(dtype):
         out_angular: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        ol, oa = se3_adjxa(X[i, j, k], a_linear[i, j, k], a_angular[i, j, k])
+        ol, oa = se3_adjtxa(X[i, j, k], a_linear[i, j, k], a_angular[i, j, k])
         out_linear[i, j, k] = ol
         out_angular[i, j, k] = oa
     return implement
 
 
-def SE3_AdjXa_fwd_kernel_4d(dtype):
-    se3_adjxa = _make_se3_adjxa(dtype)
+def SE3_AdjTXa_fwd_kernel_4d(dtype):
+    se3_adjtxa = _make_se3_adjtxa(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -151,7 +150,7 @@ def SE3_AdjXa_fwd_kernel_4d(dtype):
         out_angular: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        ol, oa = se3_adjxa(X[i, j, k, l], a_linear[i, j, k, l], a_angular[i, j, k, l])
+        ol, oa = se3_adjtxa(X[i, j, k, l], a_linear[i, j, k, l], a_angular[i, j, k, l])
         out_linear[i, j, k, l] = ol
         out_angular[i, j, k, l] = oa
     return implement
@@ -161,11 +160,11 @@ def SE3_AdjXa_fwd_kernel_4d(dtype):
 # Kernel factory selection and caching
 # =============================================================================
 
-_SE3_AdjXa_fwd_kernel_factories = {
-    1: SE3_AdjXa_fwd_kernel_1d,
-    2: SE3_AdjXa_fwd_kernel_2d,
-    3: SE3_AdjXa_fwd_kernel_3d,
-    4: SE3_AdjXa_fwd_kernel_4d,
+_SE3_AdjTXa_fwd_kernel_factories = {
+    1: SE3_AdjTXa_fwd_kernel_1d,
+    2: SE3_AdjTXa_fwd_kernel_2d,
+    3: SE3_AdjTXa_fwd_kernel_3d,
+    4: SE3_AdjTXa_fwd_kernel_4d,
 }
 
 # Cache for instantiated kernels: (ndim, dtype) -> kernel
@@ -176,7 +175,7 @@ def _get_kernel(ndim: int, dtype):
     """Get or create a kernel for the given ndim and warp scalar dtype."""
     key = (ndim, dtype)
     if key not in _kernel_cache:
-        factory = _SE3_AdjXa_fwd_kernel_factories[ndim]
+        factory = _SE3_AdjTXa_fwd_kernel_factories[ndim]
         _kernel_cache[key] = factory(dtype)
     return _kernel_cache[key]
 
@@ -193,17 +192,17 @@ _TORCH_TO_WP_SCALAR = {
 # Main forward function
 # =============================================================================
 
-def SE3_AdjXa_fwd(X: pp.LieTensor, a: pp.LieTensor) -> torch.Tensor:
+def SE3_AdjTXa_fwd(X: pp.LieTensor, a: pp.LieTensor) -> torch.Tensor:
     """
-    Compute Adjoint action: out = Adj(X) @ a
+    Compute Transpose Adjoint action: out = Adj^T(X) @ a = Adj(X^{-1}) @ a
     
-    Where Adj(X) is the 6x6 adjoint matrix of SE3:
-        Adj = [R,     skew(t) @ R]
-              [0,          R     ]
+    Where Adj^T(X) is the transpose of the 6x6 adjoint matrix:
+        Adj^T = [R^T,              0   ]
+                [-R^T @ skew(t),   R^T ]
     
     Expanding:
-        out[:3] = R @ a[:3] + t x (R @ a[3:6])
-        out[3:6] = R @ a[3:6]
+        out[:3] = R^T @ a[:3]
+        out[3:6] = R^T @ (t × a[:3] + a[3:6])
     
     Supports arbitrary batch dimensions with PyTorch-style broadcasting.
     
@@ -212,7 +211,7 @@ def SE3_AdjXa_fwd(X: pp.LieTensor, a: pp.LieTensor) -> torch.Tensor:
         a: se3 LieTensor of shape (..., 6) - [v_x, v_y, v_z, w_x, w_y, w_z]
         
     Returns:
-        Adjoint action result of shape (broadcast(...), 6)
+        Transpose adjoint action result of shape (broadcast(...), 6)
     """
     X_tensor = X.tensor() if hasattr(X, 'tensor') else X
     a_tensor = a.tensor() if hasattr(a, 'tensor') else a

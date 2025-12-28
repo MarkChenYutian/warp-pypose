@@ -10,6 +10,8 @@ from .Act4 import SE3_Act4, SE3_Act4_fwd, SE3_Act4_bwd
 from .Inv import SE3_Inv, SE3_Inv_fwd, SE3_Inv_bwd
 from .Mul import SE3_Mul, SE3_Mul_fwd, SE3_Mul_bwd
 from .AdjXa import SE3_AdjXa, SE3_AdjXa_fwd, SE3_AdjXa_bwd
+from .AdjTXa import SE3_AdjTXa, SE3_AdjTXa_fwd, SE3_AdjTXa_bwd
+from .Jinvp import SE3_Jinvp, SE3_Jinvp_fwd, SE3_Jinvp_bwd
 
 
 class warp_SE3Type(SE3Type):
@@ -75,6 +77,43 @@ class warp_SE3Type(SE3Type):
             LieTensor(input_tensors[1], ltype=pp.se3_type)
         )
         dim = -1 if out.nelement() != 0 else a_tensor.shape[-1]
+        out = out.view(out_shape + (dim,))
+        return LieTensor(out, ltype=pp.se3_type)
+
+    def AdjT(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
+        """
+        SE3 transpose adjoint action: out = Adj^T(X) @ a = Adj(X^{-1}) @ a
+        
+        Where Adj^T(X) is the transpose of the 6x6 adjoint matrix and a is an se3 
+        Lie algebra element. Maps a twist in the space frame to a twist in the body frame.
+        """
+        assert not self.on_manifold
+        X_tensor = X.tensor() if isinstance(X, LieTensor) else X
+        a_tensor = a.tensor() if isinstance(a, LieTensor) else a
+        input_tensors, out_shape = broadcast_inputs(X_tensor, a_tensor)
+        out = SE3_AdjTXa.apply(
+            LieTensor(input_tensors[0], ltype=self),
+            LieTensor(input_tensors[1], ltype=pp.se3_type)
+        )
+        dim = -1 if out.nelement() != 0 else a_tensor.shape[-1]
+        out = out.view(out_shape + (dim,))
+        return LieTensor(out, ltype=pp.se3_type)
+
+    def Jinvp(self, X: pp.LieTensor, p: pp.LieTensor) -> pp.LieTensor:
+        """
+        SE3 Jinvp: out = Jl_inv(Log(X)) @ p
+        
+        Maps a tangent vector p through the inverse left Jacobian of the Log map.
+        """
+        assert not self.on_manifold
+        X_tensor = X.tensor() if isinstance(X, LieTensor) else X
+        p_tensor = p.tensor() if isinstance(p, LieTensor) else p
+        input_tensors, out_shape = broadcast_inputs(X_tensor, p_tensor)
+        out = SE3_Jinvp.apply(
+            LieTensor(input_tensors[0], ltype=self),
+            LieTensor(input_tensors[1], ltype=pp.se3_type)
+        )
+        dim = -1 if out.nelement() != 0 else p_tensor.shape[-1]
         out = out.view(out_shape + (dim,))
         return LieTensor(out, ltype=pp.se3_type)
 
