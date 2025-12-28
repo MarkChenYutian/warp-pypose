@@ -6,64 +6,37 @@ import warp as wp
 import typing as T
 
 from ....utils.warp_utils import wp_vec3_type, wp_transform_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_QUAT,
+    DTYPE_TO_TRANSFORM,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+)
 
 
 # =============================================================================
 # SE3_Act Backward Pass
 #
 # Forward: out = t + R @ p
-# where X = (t, q) is SE3 with translation t and rotation quaternion q
-#
-# Backward (from PyPose):
-#   X_grad[:3] = grad_output (translation gradient is identity)
+# Backward:
+#   X_grad[:3] = grad_output (translation gradient)
 #   X_grad[3:6] = cross(out, grad_output) (rotation Lie algebra gradient)
 #   X_grad[6] = 0 (w component always zero)
 #   p_grad = R^T @ grad_output
-#
-# The Jacobian of the action w.r.t. SE3 tangent space (se3) is:
-#   J = [I_3x3 | skew(-out)]  (3x6 matrix)
 # =============================================================================
-
-
-# =============================================================================
-# Type-specific constructor mappings
-# =============================================================================
-
-_DTYPE_TO_QUAT_CTOR = {
-    wp.float16: wp.quath,
-    wp.float32: wp.quatf,
-    wp.float64: wp.quatd,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
 
 
 def _make_grad_funcs(dtype):
-    """
-    Factory function to create dtype-specific gradient computation functions.
-    
-    Args:
-        dtype: Warp scalar type (wp.float16, wp.float32, wp.float64)
-        
-    Returns:
-        Tuple of (compute_se3_grad_X, compute_se3_grad_p) warp functions
-    """
-    # Get the correct type-specific constructors
-    quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     @wp.func
     def compute_se3_grad_X(out: T.Any, g: T.Any) -> T.Any:
         """Compute SE3 gradient: (grad_output, cross(out, grad_output), 0)"""
-        # Translation gradient is just the incoming gradient
         t_grad = g
-        # Rotation gradient is cross(out, grad) = skew(-out) @ grad
         rot_grad = wp.cross(out, g)
-        # Return as transform: (t_grad, quaternion(rot_grad, 0))
         return transform_ctor(t_grad, quat_ctor(rot_grad[0], rot_grad[1], rot_grad[2], dtype(0.0)))
 
     @wp.func
@@ -80,7 +53,7 @@ def _make_grad_funcs(dtype):
 # Backward kernel factories for 1D to 4D batch dimensions
 # =============================================================================
 
-def SE3_Act_bwd_kernel_1d(dtype):
+def _make_kernel_1d(dtype):
     compute_se3_grad_X, compute_se3_grad_p = _make_grad_funcs(dtype)
     
     @wp.kernel(enable_backward=False)
@@ -97,7 +70,7 @@ def SE3_Act_bwd_kernel_1d(dtype):
     return implement
 
 
-def SE3_Act_bwd_kernel_2d(dtype):
+def _make_kernel_2d(dtype):
     compute_se3_grad_X, compute_se3_grad_p = _make_grad_funcs(dtype)
     
     @wp.kernel(enable_backward=False)
@@ -114,7 +87,7 @@ def SE3_Act_bwd_kernel_2d(dtype):
     return implement
 
 
-def SE3_Act_bwd_kernel_3d(dtype):
+def _make_kernel_3d(dtype):
     compute_se3_grad_X, compute_se3_grad_p = _make_grad_funcs(dtype)
     
     @wp.kernel(enable_backward=False)
@@ -131,7 +104,7 @@ def SE3_Act_bwd_kernel_3d(dtype):
     return implement
 
 
-def SE3_Act_bwd_kernel_4d(dtype):
+def _make_kernel_4d(dtype):
     compute_se3_grad_X, compute_se3_grad_p = _make_grad_funcs(dtype)
     
     @wp.kernel(enable_backward=False)
@@ -148,35 +121,11 @@ def SE3_Act_bwd_kernel_4d(dtype):
     return implement
 
 
-# =============================================================================
-# Kernel factory selection and caching
-# =============================================================================
-
-_SE3_Act_bwd_kernel_factories = {
-    1: SE3_Act_bwd_kernel_1d,
-    2: SE3_Act_bwd_kernel_2d,
-    3: SE3_Act_bwd_kernel_3d,
-    4: SE3_Act_bwd_kernel_4d,
-}
-
-# Cache for instantiated kernels: (ndim, dtype) -> kernel
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    """Get or create a kernel for the given ndim and warp scalar dtype."""
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _SE3_Act_bwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-# Map torch dtype to warp scalar type for kernel specialization
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
+_kernel_factories = {
+    1: _make_kernel_1d,
+    2: _make_kernel_2d,
+    3: _make_kernel_3d,
+    4: _make_kernel_4d,
 }
 
 
@@ -193,7 +142,7 @@ def SE3_Act_bwd(
     Backward pass for SE3_Act.
     
     Args:
-        X: SE3 tensor of shape (..., 7) - expanded to broadcast shape
+        X: SE3 tensor of shape (..., 7)
         out: Output from forward pass, shape (..., 3)
         grad_output: Gradient w.r.t. output, shape (..., 3)
         
@@ -201,30 +150,20 @@ def SE3_Act_bwd(
         grad_X: Gradient w.r.t. X, shape (..., 7)
         grad_p: Gradient w.r.t. p, shape (..., 3)
     """
-    batch_shape = X.shape[:-1]
-    ndim = len(batch_shape)
+    # Prepare batch dimensions
+    X, batch_info = prepare_batch_single(X)
     
-    if ndim == 0:
-        # Scalar case: add dummy batch dimension
-        X = X.unsqueeze(0)
+    if batch_info.squeeze_output:
         out = out.unsqueeze(0)
         grad_output = grad_output.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
     
     dtype = X.dtype
     device = X.device
     transform_type = wp_transform_type(dtype)
     vec3_type = wp_vec3_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
-    # Detach and ensure tensors are contiguous for warp conversion
+    # Detach and ensure tensors are contiguous
     X = X.detach().contiguous()
     out = out.detach().contiguous()
     grad_output = grad_output.detach().contiguous()
@@ -235,25 +174,19 @@ def SE3_Act_bwd(
     grad_output_wp = wp.from_torch(grad_output, dtype=vec3_type)
     
     # Allocate output gradients
-    grad_X_tensor = torch.empty((*batch_shape, 7), dtype=dtype, device=device)
-    grad_p_tensor = torch.empty((*batch_shape, 3), dtype=dtype, device=device)
+    grad_X_tensor = torch.empty((*batch_info.shape, 7), dtype=dtype, device=device)
+    grad_p_tensor = torch.empty((*batch_info.shape, 3), dtype=dtype, device=device)
     
     grad_X_wp = wp.from_torch(grad_X_tensor, dtype=transform_type)
     grad_p_wp = wp.from_torch(grad_p_tensor, dtype=vec3_type)
     
-    # Get or create kernel for this dtype and ndim
-    kernel = _get_kernel(ndim, wp_scalar)
-    
-    # Launch kernel
+    # Get kernel and launch
+    kernel = KernelRegistry.get(_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=X_wp.device,
         inputs=[X_wp, out_wp, grad_output_wp, grad_X_wp, grad_p_wp],
     )
     
-    if squeeze_output:
-        grad_X_tensor = grad_X_tensor.squeeze(0)
-        grad_p_tensor = grad_p_tensor.squeeze(0)
-    
-    return grad_X_tensor, grad_p_tensor
+    return finalize_output(grad_X_tensor, batch_info), finalize_output(grad_p_tensor, batch_info)

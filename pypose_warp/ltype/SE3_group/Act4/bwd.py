@@ -227,12 +227,8 @@ def _get_kernel(ndim: int, dtype):
     return _kernel_cache[key]
 
 
-# Map torch dtype to warp scalar type for kernel specialization
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
-}
+# Import common utilities
+from ...common.kernel_utils import TORCH_TO_WP_SCALAR
 
 
 # =============================================================================
@@ -277,7 +273,7 @@ def SE3_Act4_bwd(
     device = X.device
     transform_type = wp_transform_type(dtype)
     vec4_type = wp_vec4_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous for warp conversion
     X = X.detach().contiguous()

@@ -8,39 +8,35 @@ import pypose as pp
 
 from ....utils.warp_utils import wp_vec3_type, wp_mat33_type
 from ...common.warp_functions import so3_exp_wp_func
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+)
 
 
 # =============================================================================
 # Helper function: so3 (axis-angle) -> mat33 (rotation matrix)
-#
-# This composes:
-#   1. so3 -> quaternion (via Exp)
-#   2. quaternion -> rotation matrix (via quat_to_matrix)
-#
-# This is equivalent to Rodrigues' formula:
-#   R = I + sin(θ)/θ * K + (1 - cos(θ))/θ² * K²
-# where K = skew(ω), θ = ||ω||
 # =============================================================================
 
-def so3_mat_wp_func(dtype):
+def _make_so3_mat(dtype):
     so3_exp_impl = so3_exp_wp_func(dtype)
     
     @wp.func
-    def implement(x: T.Any) -> T.Any:
+    def so3_mat(x: T.Any) -> T.Any:
         """Convert so3 (axis-angle) to rotation matrix via quaternion."""
-        # First convert to quaternion
         q = so3_exp_impl(x)
-        # Then convert to rotation matrix
         return wp.quat_to_matrix(q)
-    return implement
+    return so3_mat
 
 
 # =============================================================================
 # Kernel factories for different batch dimensions (1D to 4D)
 # =============================================================================
 
-def so3_Mat_fwd_kernel_1d(dtype):
-    so3_mat_impl = so3_mat_wp_func(dtype)
+def _make_kernel_1d(dtype):
+    so3_mat_impl = _make_so3_mat(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -52,8 +48,8 @@ def so3_Mat_fwd_kernel_1d(dtype):
     return implement
 
 
-def so3_Mat_fwd_kernel_2d(dtype):
-    so3_mat_impl = so3_mat_wp_func(dtype)
+def _make_kernel_2d(dtype):
+    so3_mat_impl = _make_so3_mat(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -65,8 +61,8 @@ def so3_Mat_fwd_kernel_2d(dtype):
     return implement
 
 
-def so3_Mat_fwd_kernel_3d(dtype):
-    so3_mat_impl = so3_mat_wp_func(dtype)
+def _make_kernel_3d(dtype):
+    so3_mat_impl = _make_so3_mat(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -78,8 +74,8 @@ def so3_Mat_fwd_kernel_3d(dtype):
     return implement
 
 
-def so3_Mat_fwd_kernel_4d(dtype):
-    so3_mat_impl = so3_mat_wp_func(dtype)
+def _make_kernel_4d(dtype):
+    so3_mat_impl = _make_so3_mat(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -91,35 +87,11 @@ def so3_Mat_fwd_kernel_4d(dtype):
     return implement
 
 
-# =============================================================================
-# Kernel factory selection
-# =============================================================================
-
-_so3_Mat_fwd_kernel_factories = {
-    1: so3_Mat_fwd_kernel_1d,
-    2: so3_Mat_fwd_kernel_2d,
-    3: so3_Mat_fwd_kernel_3d,
-    4: so3_Mat_fwd_kernel_4d,
-}
-
-# Cache for instantiated kernels: (ndim, dtype) -> kernel
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    """Get or create a kernel for the given ndim and warp scalar dtype."""
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _so3_Mat_fwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-# Map torch dtype to warp scalar type for kernel specialization
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
+_kernel_factories = {
+    1: _make_kernel_1d,
+    2: _make_kernel_2d,
+    3: _make_kernel_3d,
+    4: _make_kernel_4d,
 }
 
 
@@ -146,47 +118,29 @@ def so3_Mat_fwd(x: pp.LieTensor) -> torch.Tensor:
     """
     x_tensor = x.tensor() if hasattr(x, 'tensor') else x
     
-    # Get batch shape (everything except last dim)
-    batch_shape = x_tensor.shape[:-1]
-    
-    ndim = len(batch_shape)
-    if ndim == 0:
-        # Scalar case: add a dummy batch dimension
-        x_tensor = x_tensor.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
+    # Prepare batch dimensions
+    x_tensor, batch_info = prepare_batch_single(x_tensor)
     
     # Get warp types based on dtype
     dtype = x_tensor.dtype
     vec3_type = wp_vec3_type(dtype)
     mat33_type = wp_mat33_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp array
     x_wp = wp.from_torch(x_tensor.contiguous(), dtype=vec3_type)
     
     # Create output tensor and warp array
-    out_tensor = torch.empty((*batch_shape, 3, 3), dtype=dtype, device=x_tensor.device)
+    out_tensor = torch.empty((*batch_info.shape, 3, 3), dtype=dtype, device=x_tensor.device)
     out_wp = wp.from_torch(out_tensor, dtype=mat33_type)
     
-    # Get or create kernel for this dtype
-    kernel = _get_kernel(ndim, wp_scalar)
-    
-    # Launch kernel with multi-dimensional grid
+    # Get kernel and launch
+    kernel = KernelRegistry.get(_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=x_wp.device,
         inputs=[x_wp, out_wp],
     )
     
-    if squeeze_output:
-        out_tensor = out_tensor.squeeze(0)
-    
-    return out_tensor
+    return finalize_output(out_tensor, batch_info)

@@ -6,6 +6,12 @@ import warp as wp
 import typing as T
 
 from ....utils.warp_utils import wp_quat_type, wp_vec3_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+)
 
 
 # =============================================================================
@@ -22,7 +28,7 @@ from ....utils.warp_utils import wp_quat_type, wp_vec3_type
 #              = skew(a_grad) @ a = a_grad × a
 # =============================================================================
 
-def SO3_AdjTXa_bwd_kernel_1d(dtype):
+def _make_kernel_1d(dtype):
     @wp.kernel(enable_backward=False)
     def implement(
         X: wp.array(dtype=T.Any, ndim=1),
@@ -36,17 +42,15 @@ def SO3_AdjTXa_bwd_kernel_1d(dtype):
         g = grad_output[i]
         av = a[i]
         
-        # a_grad = R @ g
         a_grad_vec = R @ g
         grad_a[i] = a_grad_vec
         
-        # X_grad_xyz = a_grad × a (cross product)
         gx = wp.cross(a_grad_vec, av)
         grad_X[i] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
     return implement
 
 
-def SO3_AdjTXa_bwd_kernel_2d(dtype):
+def _make_kernel_2d(dtype):
     @wp.kernel(enable_backward=False)
     def implement(
         X: wp.array(dtype=T.Any, ndim=2),
@@ -68,7 +72,7 @@ def SO3_AdjTXa_bwd_kernel_2d(dtype):
     return implement
 
 
-def SO3_AdjTXa_bwd_kernel_3d(dtype):
+def _make_kernel_3d(dtype):
     @wp.kernel(enable_backward=False)
     def implement(
         X: wp.array(dtype=T.Any, ndim=3),
@@ -90,7 +94,7 @@ def SO3_AdjTXa_bwd_kernel_3d(dtype):
     return implement
 
 
-def SO3_AdjTXa_bwd_kernel_4d(dtype):
+def _make_kernel_4d(dtype):
     @wp.kernel(enable_backward=False)
     def implement(
         X: wp.array(dtype=T.Any, ndim=4),
@@ -112,32 +116,11 @@ def SO3_AdjTXa_bwd_kernel_4d(dtype):
     return implement
 
 
-# =============================================================================
-# Kernel factory selection
-# =============================================================================
-
-_SO3_AdjTXa_bwd_kernel_factories = {
-    1: SO3_AdjTXa_bwd_kernel_1d,
-    2: SO3_AdjTXa_bwd_kernel_2d,
-    3: SO3_AdjTXa_bwd_kernel_3d,
-    4: SO3_AdjTXa_bwd_kernel_4d,
-}
-
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _SO3_AdjTXa_bwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
+_kernel_factories = {
+    1: _make_kernel_1d,
+    2: _make_kernel_2d,
+    3: _make_kernel_3d,
+    4: _make_kernel_4d,
 }
 
 
@@ -163,28 +146,19 @@ def SO3_AdjTXa_bwd(
             grad_X: shape (..., 4) with w component = 0
             grad_a: shape (..., 3)
     """
-    batch_shape = X.shape[:-1]
-    ndim = len(batch_shape)
+    # Prepare batch dimensions
+    X, batch_info = prepare_batch_single(X)
     
-    if ndim == 0:
-        X = X.unsqueeze(0)
+    if batch_info.squeeze_output:
         a = a.unsqueeze(0)
         grad_output = grad_output.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
     
     dtype = X.dtype
     device = X.device
     
     quat_type = wp_quat_type(dtype)
     vec3_type = wp_vec3_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous
     X = X.detach().contiguous()
@@ -195,22 +169,17 @@ def SO3_AdjTXa_bwd(
     a_wp = wp.from_torch(a, dtype=vec3_type)
     grad_output_wp = wp.from_torch(grad_output, dtype=vec3_type)
     
-    grad_X_tensor = torch.empty((*batch_shape, 4), dtype=dtype, device=device)
-    grad_a_tensor = torch.empty((*batch_shape, 3), dtype=dtype, device=device)
+    grad_X_tensor = torch.empty((*batch_info.shape, 4), dtype=dtype, device=device)
+    grad_a_tensor = torch.empty((*batch_info.shape, 3), dtype=dtype, device=device)
     grad_X_wp = wp.from_torch(grad_X_tensor, dtype=quat_type)
     grad_a_wp = wp.from_torch(grad_a_tensor, dtype=vec3_type)
     
-    kernel = _get_kernel(ndim, wp_scalar)
+    kernel = KernelRegistry.get(_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=X_wp.device,
         inputs=[X_wp, a_wp, grad_output_wp, grad_X_wp, grad_a_wp],
     )
     
-    if squeeze_output:
-        grad_X_tensor = grad_X_tensor.squeeze(0)
-        grad_a_tensor = grad_a_tensor.squeeze(0)
-    
-    return grad_X_tensor, grad_a_tensor
-
+    return finalize_output(grad_X_tensor, batch_info), finalize_output(grad_a_tensor, batch_info)

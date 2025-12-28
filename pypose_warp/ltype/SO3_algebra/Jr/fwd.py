@@ -20,40 +20,34 @@ import typing as T
 import pypose as pp
 
 from ....utils.warp_utils import wp_vec3_type, wp_mat33_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+)
 
 
 # =============================================================================
 # Warp function for computing right Jacobian Jr
 # =============================================================================
 
-def so3_Jr_wp_func(dtype):
-    """
-    Create a Warp function for computing the right Jacobian Jr for so3.
-    
-    Formula: Jr = I - coef1 * K + coef2 * K @ K
-    where:
-        coef1 = (1 - cos(theta)) / theta^2  if theta > eps
-        coef1 = 0.5 - (1/24) * theta^2  otherwise (Taylor expansion)
-        coef2 = (theta - sin(theta)) / theta^3  if theta > eps
-        coef2 = 1/6 - (1/120) * theta^2  otherwise (Taylor expansion)
-    """
-    # Dtype-dependent epsilon for numerical stability
-    # These are approximate machine epsilon values for each dtype
+def _make_so3_Jr(dtype):
+    """Create a Warp function for computing the right Jacobian Jr for so3."""
     if dtype == wp.float16:
-        eps_val = 1e-3  # fp16 has very limited precision, use larger threshold
+        eps_val = 1e-3
     elif dtype == wp.float32:
         eps_val = 1e-6
-    else:  # fp64
+    else:
         eps_val = 1e-12
     
     @wp.func
-    def implement(x: T.Any) -> T.Any:
+    def so3_Jr(x: T.Any) -> T.Any:
         """Compute right Jacobian Jr for so3."""
         theta = wp.length(x)
         K = wp.skew(x)
         I = wp.identity(n=3, dtype=dtype)
         
-        # Use dtype-appropriate epsilon for numerical stability
         eps = dtype(eps_val)
         theta2 = theta * theta
         
@@ -61,26 +55,22 @@ def so3_Jr_wp_func(dtype):
         coef2 = dtype(0.0)
         
         if theta > eps:
-            # Standard formula
             coef1 = (dtype(1.0) - wp.cos(theta)) / theta2
             coef2 = (theta - wp.sin(theta)) / (theta * theta2)
         else:
-            # Taylor expansion for small theta (better numeric stability)
             coef1 = dtype(0.5) - (dtype(1.0) / dtype(24.0)) * theta2
             coef2 = dtype(1.0) / dtype(6.0) - (dtype(1.0) / dtype(120.0)) * theta2
         
-        # Jr = I - coef1 * K + coef2 * K @ K
-        # Note: negative sign on coef1 term (unlike Jl which has positive)
         return I - coef1 * K + coef2 * (K @ K)
-    return implement
+    return so3_Jr
 
 
 # =============================================================================
 # Kernel factories for different batch dimensions (1D to 4D)
 # =============================================================================
 
-def so3_Jr_fwd_kernel_1d(dtype):
-    so3_Jr_impl = so3_Jr_wp_func(dtype)
+def _make_kernel_1d(dtype):
+    so3_Jr_impl = _make_so3_Jr(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -92,8 +82,8 @@ def so3_Jr_fwd_kernel_1d(dtype):
     return implement
 
 
-def so3_Jr_fwd_kernel_2d(dtype):
-    so3_Jr_impl = so3_Jr_wp_func(dtype)
+def _make_kernel_2d(dtype):
+    so3_Jr_impl = _make_so3_Jr(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -105,8 +95,8 @@ def so3_Jr_fwd_kernel_2d(dtype):
     return implement
 
 
-def so3_Jr_fwd_kernel_3d(dtype):
-    so3_Jr_impl = so3_Jr_wp_func(dtype)
+def _make_kernel_3d(dtype):
+    so3_Jr_impl = _make_so3_Jr(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -118,8 +108,8 @@ def so3_Jr_fwd_kernel_3d(dtype):
     return implement
 
 
-def so3_Jr_fwd_kernel_4d(dtype):
-    so3_Jr_impl = so3_Jr_wp_func(dtype)
+def _make_kernel_4d(dtype):
+    so3_Jr_impl = _make_so3_Jr(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -131,35 +121,11 @@ def so3_Jr_fwd_kernel_4d(dtype):
     return implement
 
 
-# =============================================================================
-# Kernel factory selection and caching
-# =============================================================================
-
-_so3_Jr_fwd_kernel_factories = {
-    1: so3_Jr_fwd_kernel_1d,
-    2: so3_Jr_fwd_kernel_2d,
-    3: so3_Jr_fwd_kernel_3d,
-    4: so3_Jr_fwd_kernel_4d,
-}
-
-# Cache for instantiated kernels: (ndim, dtype) -> kernel
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    """Get or create a kernel for the given ndim and warp scalar dtype."""
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _so3_Jr_fwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-# Map torch dtype to warp scalar type for kernel specialization
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
+_kernel_factories = {
+    1: _make_kernel_1d,
+    2: _make_kernel_2d,
+    3: _make_kernel_3d,
+    4: _make_kernel_4d,
 }
 
 
@@ -182,48 +148,29 @@ def so3_Jr_fwd(x: pp.LieTensor) -> torch.Tensor:
     """
     x_tensor = x.tensor()
     
-    # Get batch shape (everything except last dim which is 3 for so3)
-    batch_shape = x_tensor.shape[:-1]
-    
-    ndim = len(batch_shape)
-    if ndim == 0:
-        # Scalar case: add a dummy batch dimension
-        x_tensor = x_tensor.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
+    # Prepare batch dimensions
+    x_tensor, batch_info = prepare_batch_single(x_tensor)
     
     # Get warp types based on dtype
     dtype = x_tensor.dtype
     vec3_type = wp_vec3_type(dtype)
     mat33_type = wp_mat33_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp array
     x_wp = wp.from_torch(x_tensor.contiguous(), dtype=vec3_type)
     
     # Create output tensor and warp array
-    out_tensor = torch.empty((*batch_shape, 3, 3), dtype=dtype, device=x_tensor.device)
+    out_tensor = torch.empty((*batch_info.shape, 3, 3), dtype=dtype, device=x_tensor.device)
     out_wp = wp.from_torch(out_tensor, dtype=mat33_type)
     
-    # Get or create kernel for this dtype
-    kernel = _get_kernel(ndim, wp_scalar)
-    
-    # Launch kernel with multi-dimensional grid
+    # Get kernel and launch
+    kernel = KernelRegistry.get(_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=x_wp.device,
         inputs=[x_wp, out_wp],
     )
     
-    if squeeze_output:
-        out_tensor = out_tensor.squeeze(0)
-    
-    return out_tensor
-
+    return finalize_output(out_tensor, batch_info)

@@ -4,9 +4,14 @@
 import torch
 import warp as wp
 import typing as T
-import pypose as pp
 
 from ....utils.warp_utils import wp_quat_type, wp_vec3_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+)
 
 
 # =============================================================================
@@ -18,9 +23,9 @@ from ....utils.warp_utils import wp_quat_type, wp_vec3_type
 # where SO3_Adj(X) is the rotation matrix from quaternion X.
 # =============================================================================
 
-def compute_mul_grad(dtype):
+def _make_compute_mul_grad(dtype):
     @wp.func
-    def implement(X: T.Any, g: T.Any) -> T.Any:
+    def compute_mul_grad(X: T.Any, g: T.Any) -> T.Any:
         """Compute grad_Y for SO3_Mul backward.
         
         grad_X is just (g, 0), computed separately.
@@ -28,19 +33,17 @@ def compute_mul_grad(dtype):
         In Warp column vector form: grad_Y_vec = R^T @ g
         """
         R = wp.quat_to_matrix(X)
-        # PyPose: grad = grad_output @ R (row vector @ matrix)
-        # Warp: grad = R^T @ g (matrix @ column vector)
         grad_vec = wp.transpose(R) @ g
         return wp.quaternion(grad_vec[0], grad_vec[1], grad_vec[2], dtype(0.0))
-    return implement
+    return compute_mul_grad
 
 
 # =============================================================================
 # Backward kernel factories for 1D to 4D batch dimensions
 # =============================================================================
 
-def SO3_Mul_bwd_kernel_1d(dtype):
-    compute_mul_grad_impl = compute_mul_grad(dtype)
+def _make_kernel_1d(dtype):
+    compute_mul_grad_impl = _make_compute_mul_grad(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -51,15 +54,13 @@ def SO3_Mul_bwd_kernel_1d(dtype):
     ):
         i = wp.tid()
         g = grad_output[i]
-        # grad_X = (g, 0)
         grad_X[i] = wp.quaternion(g[0], g[1], g[2], dtype(0.0))
-        # grad_Y = (g @ R, 0)
         grad_Y[i] = compute_mul_grad_impl(X[i], g)
     return implement
 
 
-def SO3_Mul_bwd_kernel_2d(dtype):
-    compute_mul_grad_impl = compute_mul_grad(dtype)
+def _make_kernel_2d(dtype):
+    compute_mul_grad_impl = _make_compute_mul_grad(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -75,8 +76,8 @@ def SO3_Mul_bwd_kernel_2d(dtype):
     return implement
 
 
-def SO3_Mul_bwd_kernel_3d(dtype):
-    compute_mul_grad_impl = compute_mul_grad(dtype)
+def _make_kernel_3d(dtype):
+    compute_mul_grad_impl = _make_compute_mul_grad(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -92,8 +93,8 @@ def SO3_Mul_bwd_kernel_3d(dtype):
     return implement
 
 
-def SO3_Mul_bwd_kernel_4d(dtype):
-    compute_mul_grad_impl = compute_mul_grad(dtype)
+def _make_kernel_4d(dtype):
+    compute_mul_grad_impl = _make_compute_mul_grad(dtype)
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -109,32 +110,11 @@ def SO3_Mul_bwd_kernel_4d(dtype):
     return implement
 
 
-# =============================================================================
-# Kernel factory selection
-# =============================================================================
-
-_SO3_Mul_bwd_kernel_factories = {
-    1: SO3_Mul_bwd_kernel_1d,
-    2: SO3_Mul_bwd_kernel_2d,
-    3: SO3_Mul_bwd_kernel_3d,
-    4: SO3_Mul_bwd_kernel_4d,
-}
-
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _SO3_Mul_bwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-_TORCH_TO_WP_SCALAR = {
-    torch.float16: wp.float16,
-    torch.float32: wp.float32,
-    torch.float64: wp.float64,
+_kernel_factories = {
+    1: _make_kernel_1d,
+    2: _make_kernel_2d,
+    3: _make_kernel_3d,
+    4: _make_kernel_4d,
 }
 
 
@@ -156,27 +136,18 @@ def SO3_Mul_bwd(
     Returns:
         Tuple of (grad_X, grad_Y), each of shape (..., 4)
     """
-    batch_shape = X.shape[:-1]
-    ndim = len(batch_shape)
+    # Prepare batch dimensions
+    X, batch_info = prepare_batch_single(X)
     
-    if ndim == 0:
-        X = X.unsqueeze(0)
+    if batch_info.squeeze_output:
         grad_output = grad_output.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
     
     dtype = X.dtype
     device = X.device
     
     quat_type = wp_quat_type(dtype)
     vec3_type = wp_vec3_type(dtype)
-    wp_scalar = _TORCH_TO_WP_SCALAR[dtype]
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous
     X = X.detach().contiguous()
@@ -188,22 +159,17 @@ def SO3_Mul_bwd(
     X_wp = wp.from_torch(X, dtype=quat_type)
     grad_output_wp = wp.from_torch(grad_output_xyz, dtype=vec3_type)
     
-    grad_X_tensor = torch.empty((*batch_shape, 4), dtype=dtype, device=device)
-    grad_Y_tensor = torch.empty((*batch_shape, 4), dtype=dtype, device=device)
+    grad_X_tensor = torch.empty((*batch_info.shape, 4), dtype=dtype, device=device)
+    grad_Y_tensor = torch.empty((*batch_info.shape, 4), dtype=dtype, device=device)
     grad_X_wp = wp.from_torch(grad_X_tensor, dtype=quat_type)
     grad_Y_wp = wp.from_torch(grad_Y_tensor, dtype=quat_type)
     
-    kernel = _get_kernel(ndim, wp_scalar)
+    kernel = KernelRegistry.get(_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=X_wp.device,
         inputs=[X_wp, grad_output_wp, grad_X_wp, grad_Y_wp],
     )
     
-    if squeeze_output:
-        grad_X_tensor = grad_X_tensor.squeeze(0)
-        grad_Y_tensor = grad_Y_tensor.squeeze(0)
-    
-    return grad_X_tensor, grad_Y_tensor
-
+    return finalize_output(grad_X_tensor, batch_info), finalize_output(grad_Y_tensor, batch_info)

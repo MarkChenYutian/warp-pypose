@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Mat, Inv, Log, Mul, Act, Act4, AdjXa, AdjTXa, JInvp
+from . import Mat, Log, Mul, Act, Act4, AdjXa, AdjTXa, JInvp
 
 
 # ============================================================================
@@ -82,12 +82,6 @@ OPERATORS = [
         name="Mat",
         bench_forward=Mat.bench_forward,
         bench_backward=Mat.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="Inv",
-        bench_forward=Inv.bench_forward,
-        bench_backward=Inv.bench_backward,
         has_kind=False,
     ),
     OperatorInfo(
