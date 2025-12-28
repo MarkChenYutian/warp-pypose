@@ -9,6 +9,7 @@ from .Act import SE3_Act, SE3_Act_fwd, SE3_Act_bwd
 from .Act4 import SE3_Act4, SE3_Act4_fwd, SE3_Act4_bwd
 from .Inv import SE3_Inv, SE3_Inv_fwd, SE3_Inv_bwd
 from .Mul import SE3_Mul, SE3_Mul_fwd, SE3_Mul_bwd
+from .AdjXa import SE3_AdjXa, SE3_AdjXa_fwd, SE3_AdjXa_bwd
 
 
 class warp_SE3Type(SE3Type):
@@ -57,6 +58,25 @@ class warp_SE3Type(SE3Type):
             return LieTensor(torch.mul(X_tensor, Y), ltype=self)
         
         raise NotImplementedError('Invalid __mul__ operation')
+
+    def Adj(self, X: pp.LieTensor, a: pp.LieTensor) -> pp.LieTensor:
+        """
+        SE3 adjoint action: out = Adj(X) @ a
+        
+        Where Adj(X) is the 6x6 adjoint matrix and a is an se3 Lie algebra element.
+        Maps a twist in the body frame to a twist in the space frame.
+        """
+        assert not self.on_manifold
+        X_tensor = X.tensor() if isinstance(X, LieTensor) else X
+        a_tensor = a.tensor() if isinstance(a, LieTensor) else a
+        input_tensors, out_shape = broadcast_inputs(X_tensor, a_tensor)
+        out = SE3_AdjXa.apply(
+            LieTensor(input_tensors[0], ltype=self),
+            LieTensor(input_tensors[1], ltype=pp.se3_type)
+        )
+        dim = -1 if out.nelement() != 0 else a_tensor.shape[-1]
+        out = out.view(out_shape + (dim,))
+        return LieTensor(out, ltype=pp.se3_type)
 
 
 warpSE3_type = warp_SE3Type()

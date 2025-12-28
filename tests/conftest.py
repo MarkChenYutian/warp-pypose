@@ -41,6 +41,7 @@ class Operator(Enum):
     SE3_Act4 = "SE3_Act4"
     SE3_Inv = "SE3_Inv"
     SE3_Mul = "SE3_Mul"
+    SE3_AdjXa = "SE3_AdjXa"
 
 
 # =============================================================================
