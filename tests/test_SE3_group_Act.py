@@ -3,7 +3,7 @@ import pytest
 import torch
 import pypose as pp
 from pypose_warp.ltype.SE3_group import SE3_Act, SE3_Act_fwd
-from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator, skip_if_nan_inputs, compute_reference_fp32
 
 
 class TestSE3ActBatchDimensions:
@@ -13,9 +13,10 @@ class TestSE3ActBatchDimensions:
         """Test with 1D batch dimension."""
         se3 = pp.randn_SE3(5, device=device, dtype=dtype)
         points = torch.randn(5, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         assert result.shape == expected.shape == (5, 3)
         assert result.dtype == dtype
@@ -25,9 +26,10 @@ class TestSE3ActBatchDimensions:
         """Test with 2D batch dimensions."""
         se3 = pp.randn_SE3(3, 4, device=device, dtype=dtype)
         points = torch.randn(3, 4, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         assert result.shape == expected.shape == (3, 4, 3)
         assert result.dtype == dtype
@@ -37,9 +39,10 @@ class TestSE3ActBatchDimensions:
         """Test with 3D batch dimensions."""
         se3 = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
         points = torch.randn(2, 3, 4, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         assert result.shape == expected.shape == (2, 3, 4, 3)
         assert result.dtype == dtype
@@ -49,9 +52,10 @@ class TestSE3ActBatchDimensions:
         """Test with 4D batch dimensions."""
         se3 = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
         points = torch.randn(2, 3, 4, 5, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 3)
         assert result.dtype == dtype
@@ -61,9 +65,10 @@ class TestSE3ActBatchDimensions:
         """Test with no batch dimensions (single transform and point)."""
         se3 = pp.randn_SE3(device=device, dtype=dtype)
         points = torch.randn(3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         assert result.shape == expected.shape == (3,)
         assert result.dtype == dtype
@@ -176,9 +181,10 @@ class TestSE3ActPrecision:
         dtype = torch.float16
         se3 = pp.randn_SE3(10, device=device, dtype=dtype)
         points = torch.randn(10, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Act))
 
@@ -186,6 +192,7 @@ class TestSE3ActPrecision:
         """Test that output dtype matches input dtype."""
         se3 = pp.randn_SE3(5, device=device, dtype=dtype)
         points = torch.randn(5, 3, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Act_fwd(se3, points)
 
@@ -599,11 +606,12 @@ class TestSE3ActWarpBackend:
         from pypose_warp import to_warp_backend
         
         se3 = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
         se3_warp = to_warp_backend(se3)
         points = torch.randn(5, 3, device=device, dtype=dtype)
 
         result = se3_warp.Act(points)
-        expected = se3.Act(points)
+        expected = compute_reference_fp32(se3, 'Act', points)
 
         torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Act))
 

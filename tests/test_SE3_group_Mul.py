@@ -3,7 +3,17 @@ import pytest
 import torch
 import pypose as pp
 from pypose_warp.ltype.SE3_group import SE3_Mul, SE3_Mul_fwd
-from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator, skip_if_nan_inputs, compute_reference_fp32
+
+
+def mul_reference_fp32(X, Y):
+    """Compute SE3 multiplication reference using FP32 for stability."""
+    original_dtype = X.tensor().dtype
+    if original_dtype == torch.float16:
+        X_fp32 = pp.SE3(X.tensor().float())
+        Y_fp32 = pp.SE3(Y.tensor().float())
+        return (X_fp32 @ Y_fp32).tensor().half()
+    return (X @ Y).tensor()
 
 
 class TestSE3MulBatchDimensions:
@@ -13,61 +23,66 @@ class TestSE3MulBatchDimensions:
         """Test with 1D batch dimension."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == expected.shape == (5, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_2d_batch(self, device, dtype):
         """Test with 2D batch dimensions."""
         X = pp.randn_SE3(3, 4, device=device, dtype=dtype)
         Y = pp.randn_SE3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == expected.shape == (3, 4, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_3d_batch(self, device, dtype):
         """Test with 3D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
         Y = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == expected.shape == (2, 3, 4, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_4d_batch(self, device, dtype):
         """Test with 4D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
         Y = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_scalar_no_batch(self, device, dtype):
         """Test with no batch dimensions (single transform)."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         Y = pp.randn_SE3(device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == expected.shape == (7,)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
 
 class TestSE3MulBroadcasting:
@@ -77,34 +92,37 @@ class TestSE3MulBroadcasting:
         """Test broadcasting from 1D to 2D."""
         X = pp.randn_SE3(4, device=device, dtype=dtype)
         Y = pp.randn_SE3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == (3, 4, 7)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_broadcast_scalar_to_batch(self, device, dtype):
         """Test broadcasting a single transform with batched transforms."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == (5, 7)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_broadcast_different_batch_dims(self, device, dtype):
         """Test broadcasting with different batch dimensions."""
         X = pp.randn_SE3(1, 4, device=device, dtype=dtype)
         Y = pp.randn_SE3(3, 1, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
         assert result.shape == (3, 4, 7)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
 
 class TestSE3MulPrecision:
@@ -137,16 +155,18 @@ class TestSE3MulPrecision:
         dtype = torch.float16
         X = pp.randn_SE3(10, device=device, dtype=dtype)
         Y = pp.randn_SE3(10, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_output_dtype_preserved(self, device, dtype):
         """Test that output dtype matches input dtype."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
 
@@ -179,6 +199,7 @@ class TestSE3MulEdgeCases:
     def test_inverse_composition(self, device, dtype):
         """Test that X @ inv(X) = identity."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X)
         X_inv = X.Inv()
 
         result = SE3_Mul_fwd(X, X_inv)
@@ -229,6 +250,7 @@ class TestSE3MulMathematicalProperties:
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
         Z = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y, Z)
 
         # (X @ Y) @ Z
         XY = SE3_Mul_fwd(X, Y)
@@ -246,6 +268,7 @@ class TestSE3MulMathematicalProperties:
         """Test that quaternion part has unit norm after multiplication."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
 
         result = SE3_Mul_fwd(X, Y)
         
@@ -535,14 +558,15 @@ class TestSE3MulWarpBackend:
         
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         Y = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, Y)
         
         X_warp = to_warp_backend(X)
         Y_warp = to_warp_backend(Y)
 
         result = X_warp @ Y_warp
-        expected = X @ Y
+        expected = mul_reference_fp32(X, Y)
 
-        torch.testing.assert_close(result.tensor(), expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Mul))
+        torch.testing.assert_close(result.tensor(), expected, **get_fwd_tolerances(dtype, Operator.SE3_Mul))
 
     def test_warp_backend_gradient(self, device, dtype_bwd):
         """Test that warp_SE3Type.Mul gradients work correctly for SE3 @ SE3."""
@@ -571,12 +595,13 @@ class TestSE3MulWarpBackend:
         from pypose_warp import to_warp_backend
         
         X = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X)
         X_warp = to_warp_backend(X)
         points = torch.randn(5, 3, device=device, dtype=dtype)
 
         # SE3 @ Tensor should dispatch to Act
         result = X_warp @ points
-        expected = X @ points
+        expected = compute_reference_fp32(X, 'Act', points)
 
         torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Act))
 

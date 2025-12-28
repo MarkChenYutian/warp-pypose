@@ -12,6 +12,7 @@ from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    get_eps_for_dtype,
 )
 
 
@@ -29,6 +30,9 @@ def _make_compute_jinvp_grad(dtype):
     """Generate dtype-specific backward computation for Jinvp."""
     so3_Jl_inv_impl = so3_Jl_inv(dtype)
     
+    # Get dtype-specific epsilon for theta^2 division
+    eps_val = get_eps_for_dtype(dtype, power=2)
+    
     @wp.func
     def compute_grad_X(q: T.Any, p: T.Any, grad_out: T.Any) -> T.Any:
         """Compute gradient w.r.t. X (quaternion)."""
@@ -37,7 +41,8 @@ def _make_compute_jinvp_grad(dtype):
         I = wp.identity(n=3, dtype=dtype)
         theta = wp.length(so3)
         
-        eps = dtype(1e-6)
+        # Use dtype-specific epsilon
+        eps = dtype(eps_val)
         coef2 = dtype(0.0)
         dcoef2_dtheta = dtype(0.0)
         

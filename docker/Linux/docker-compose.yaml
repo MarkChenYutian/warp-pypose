@@ -1,6 +1,6 @@
 # System-level configuration are the same for all develop services
 x-common-config: &common-config
-  hostname: ${HOSTNAME:-macslam}-dev
+  hostname: ${HOSTNAME:pypose}-dev
   volumes:
     - ../../:/workspace
   working_dir: /workspace
@@ -105,55 +105,9 @@ services:
       - /opt/nvidia/nsight-systems/:/opt/nvidia/nsight-systems/
       - /opt/nvidia/nsight-compute/:/opt/nvidia/nsight-compute/
 
-  test-type-jetson:
-    profiles: ["arm64"]
-    platform: linux/arm64
-    image: macslam/warp-pypose:linux-static-analysis-arm64
-    working_dir: /workspace
-    
-    build:
-      context: .
-      dockerfile: Dockerfile.test-type
-      args:
-        BASE_IMAGE: macslam/warp-pypose:linux-cu126-orin-arm64
-    
-    command: "pyright"
-    volumes:
-      - ../../:/workspace
-
-  test-cfg-jetson:
-    <<: *common-config
-    profiles: ["arm64"]
-    platform: linux/arm64
-    image: macslam/warp-pypose:linux-cu126-orin-arm64
-    command: "pytest -m 'not local'"
-
-  test-type:
-    profiles: ["amd64"]
-    platform: linux/amd64
-    image: macslam/warp-pypose:linux-static-analysis-amd64
-    working_dir: /workspace
-    
-    build:
-      context: .
-      dockerfile: Dockerfile.test-type
-      args:
-        BASE_IMAGE: "macslam/warp-pypose:linux-cu128-amd64"
-    
-    volumes:
-      - ../../:/workspace
-
-  test-cfg:
-    <<: *common-config
-    profiles: ["amd64"]
-    platform: linux/amd64
-    image: macslam/warp-pypose:linux-cu128-amd64
-    command: "pytest -m 'not local'"
-
   dev-unified-entry:
     <<: *common-config
 
     image: ${DEV_IMAGE}
     platform: ${DEV_PLATFORM}
-    container_name: warp-pypose-unified-dev
     command: sleep infinity

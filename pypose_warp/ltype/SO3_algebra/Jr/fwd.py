@@ -25,6 +25,7 @@ from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    get_eps_for_dtype,
 )
 
 
@@ -34,12 +35,8 @@ from ...common.kernel_utils import (
 
 def _make_so3_Jr(dtype):
     """Create a Warp function for computing the right Jacobian Jr for so3."""
-    if dtype == wp.float16:
-        eps_val = 1e-3
-    elif dtype == wp.float32:
-        eps_val = 1e-6
-    else:
-        eps_val = 1e-12
+    # Jr divides by theta^3, so use power=3 threshold for numerical stability
+    eps_val = get_eps_for_dtype(dtype, power=3)
     
     @wp.func
     def so3_Jr(x: T.Any) -> T.Any:

@@ -6,6 +6,7 @@ import warp as wp
 import typing as T
 
 from ....utils.warp_utils import wp_transform_type, wp_vec3_type
+from ...common.kernel_utils import TORCH_TO_WP_SCALAR, get_eps_for_dtype
 
 
 # =============================================================================
@@ -61,6 +62,10 @@ def _make_se3_jinvp_grad(dtype):
     quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
     transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
     
+    # Get dtype-specific epsilon thresholds
+    eps_power2 = get_eps_for_dtype(dtype, power=2)
+    eps_power5 = get_eps_for_dtype(dtype, power=5)
+    
     @wp.func
     def so3_log(q: T.Any) -> T.Any:
         """Compute Log of SO3 quaternion -> so3 axis-angle."""
@@ -74,13 +79,15 @@ def _make_se3_jinvp_grad(dtype):
         K = wp.skew(x)
         I = wp.identity(n=3, dtype=dtype)
         
-        eps = dtype(1e-6)
+        # Use dtype-specific epsilon for theta^2 division
+        eps = dtype(eps_power2)
         coef2 = dtype(0.0)
         if theta > eps:
             theta_half = dtype(0.5) * theta
             theta2 = theta * theta
             coef2 = (dtype(1.0) - theta * wp.cos(theta_half) / (dtype(2.0) * wp.sin(theta_half))) / theta2
         else:
+            # Taylor expansion: coef2 ≈ 1/12
             coef2 = dtype(1.0) / dtype(12.0)
         
         return I - dtype(0.5) * K + coef2 * (K @ K)
@@ -94,7 +101,8 @@ def _make_se3_jinvp_grad(dtype):
         theta2 = theta * theta
         theta4 = theta2 * theta2
         
-        eps = dtype(1e-6)
+        # Use dtype-specific epsilon for theta^5 division
+        eps = dtype(eps_power5)
         
         coef1 = dtype(0.0)
         coef2 = dtype(0.0)
@@ -105,6 +113,7 @@ def _make_se3_jinvp_grad(dtype):
             coef2 = (theta2 + dtype(2.0) * wp.cos(theta) - dtype(2.0)) / (dtype(2.0) * theta4)
             coef3 = (dtype(2.0) * theta - dtype(3.0) * wp.sin(theta) + theta * wp.cos(theta)) / (dtype(2.0) * theta4 * theta)
         else:
+            # Taylor expansion for small theta
             coef1 = dtype(1.0) / dtype(6.0) - (dtype(1.0) / dtype(120.0)) * theta2
             coef2 = dtype(1.0) / dtype(24.0) - (dtype(1.0) / dtype(720.0)) * theta2
             coef3 = dtype(1.0) / dtype(120.0) - (dtype(1.0) / dtype(2520.0)) * theta2
@@ -340,10 +349,6 @@ def _get_kernel(ndim: int, dtype):
         factory = _SE3_Jinvp_bwd_kernel_factories[ndim]
         _kernel_cache[key] = factory(dtype)
     return _kernel_cache[key]
-
-
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
 
 
 # =============================================================================

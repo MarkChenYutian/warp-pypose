@@ -4,14 +4,26 @@ import torch
 import pypose as pp
 from pypose.lietensor.operation import se3_Jl_inv, SE3_Log
 from pypose_warp.ltype.SE3_group import SE3_Jinvp, SE3_Jinvp_fwd
-from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator, skip_if_nan_inputs, compute_reference_fp32
 
 
 def pypose_jinvp(X, p):
-    """Reference implementation using PyPose operations."""
+    """Reference implementation using PyPose operations.
+    
+    For FP16, computes in FP32 then downcasts to avoid PyPose numerical instability.
+    """
     X_tensor = X.tensor() if isinstance(X, pp.LieTensor) else X
     p_tensor = p.tensor() if isinstance(p, pp.LieTensor) else p
-    return (se3_Jl_inv(SE3_Log.apply(X_tensor)) @ p_tensor.unsqueeze(-1)).squeeze(-1)
+    original_dtype = X_tensor.dtype
+    
+    if original_dtype == torch.float16:
+        # Compute in FP32 for numerical stability
+        X_fp32 = X_tensor.float()
+        p_fp32 = p_tensor.float()
+        result_fp32 = (se3_Jl_inv(SE3_Log.apply(X_fp32)) @ p_fp32.unsqueeze(-1)).squeeze(-1)
+        return result_fp32.half()
+    else:
+        return (se3_Jl_inv(SE3_Log.apply(X_tensor)) @ p_tensor.unsqueeze(-1)).squeeze(-1)
 
 
 # =============================================================================
@@ -26,6 +38,7 @@ class TestSE3JinvpFwdBatchDimensions:
         """Test with 1D batch dimension."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         p = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -38,6 +51,7 @@ class TestSE3JinvpFwdBatchDimensions:
         """Test with 2D batch dimensions."""
         X = pp.randn_SE3(3, 4, device=device, dtype=dtype)
         p = pp.randn_se3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -50,6 +64,7 @@ class TestSE3JinvpFwdBatchDimensions:
         """Test with 3D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
         p = pp.randn_se3(2, 3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -62,6 +77,7 @@ class TestSE3JinvpFwdBatchDimensions:
         """Test with 4D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
         p = pp.randn_se3(2, 3, 4, 5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -74,6 +90,7 @@ class TestSE3JinvpFwdBatchDimensions:
         """Test with no batch dimensions (single transform)."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         p = pp.randn_se3(device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -90,6 +107,7 @@ class TestSE3JinvpFwdBroadcasting:
         """Test broadcasting from 1D to 2D."""
         X = pp.randn_SE3(4, device=device, dtype=dtype)
         p = pp.randn_se3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -101,6 +119,7 @@ class TestSE3JinvpFwdBroadcasting:
         """Test broadcasting a single transform with batched tangent vectors."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         p = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -112,6 +131,7 @@ class TestSE3JinvpFwdBroadcasting:
         """Test broadcasting with different batch dimensions."""
         X = pp.randn_SE3(1, 4, device=device, dtype=dtype)
         p = pp.randn_se3(3, 1, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -150,6 +170,7 @@ class TestSE3JinvpFwdPrecision:
         dtype = torch.float16
         X = pp.randn_SE3(10, device=device, dtype=dtype)
         p = pp.randn_se3(10, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
         expected = pypose_jinvp(X, p)
@@ -160,6 +181,7 @@ class TestSE3JinvpFwdPrecision:
         """Test that output dtype matches input dtype."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         p = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
 
         result = SE3_Jinvp_fwd(X, p)
 
@@ -394,13 +416,15 @@ class TestSE3JinvpWarpBackend:
         
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         p = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, p)
         
         X_warp = to_warp_backend(X)
 
         result = X_warp.Jinvp(p)
-        expected = X.Jinvp(p)
+        # Use FP32 reference for FP16 to avoid PyPose numerical instability
+        expected = compute_reference_fp32(X, 'Jinvp', p)
 
-        torch.testing.assert_close(result.tensor(), expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Jinvp))
+        torch.testing.assert_close(result.tensor(), expected, **get_fwd_tolerances(dtype, Operator.SE3_Jinvp))
 
     def test_warp_backend_gradient(self, device, dtype_bwd):
         """Test that warp_SE3Type.Jinvp gradients work correctly."""

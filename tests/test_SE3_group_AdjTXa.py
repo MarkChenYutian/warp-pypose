@@ -3,7 +3,7 @@ import pytest
 import torch
 import pypose as pp
 from pypose_warp.ltype.SE3_group import SE3_AdjTXa, SE3_AdjTXa_fwd
-from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator, skip_if_nan_inputs, compute_reference_fp32
 
 
 class TestSE3AdjTXaBatchDimensions:
@@ -13,61 +13,66 @@ class TestSE3AdjTXaBatchDimensions:
         """Test with 1D batch dimension."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         a = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == expected.shape == (5, 6)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_2d_batch(self, device, dtype):
         """Test with 2D batch dimensions."""
         X = pp.randn_SE3(3, 4, device=device, dtype=dtype)
         a = pp.randn_se3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == expected.shape == (3, 4, 6)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_3d_batch(self, device, dtype):
         """Test with 3D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
         a = pp.randn_se3(2, 3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == expected.shape == (2, 3, 4, 6)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_4d_batch(self, device, dtype):
         """Test with 4D batch dimensions."""
         X = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
         a = pp.randn_se3(2, 3, 4, 5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 6)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_scalar_no_batch(self, device, dtype):
         """Test with no batch dimensions (single transform)."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         a = pp.randn_se3(device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == expected.shape == (6,)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
 
 class TestSE3AdjTXaBroadcasting:
@@ -77,34 +82,37 @@ class TestSE3AdjTXaBroadcasting:
         """Test broadcasting from 1D to 2D."""
         X = pp.randn_SE3(4, device=device, dtype=dtype)
         a = pp.randn_se3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == (3, 4, 6)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_broadcast_scalar_to_batch(self, device, dtype):
         """Test broadcasting a single transform with batched algebra elements."""
         X = pp.randn_SE3(device=device, dtype=dtype)
         a = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == (5, 6)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_broadcast_different_batch_dims(self, device, dtype):
         """Test broadcasting with different batch dimensions."""
         X = pp.randn_SE3(1, 4, device=device, dtype=dtype)
         a = pp.randn_se3(3, 1, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
         assert result.shape == (3, 4, 6)
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
 
 class TestSE3AdjTXaPrecision:
@@ -137,16 +145,18 @@ class TestSE3AdjTXaPrecision:
         dtype = torch.float16
         X = pp.randn_SE3(10, device=device, dtype=dtype)
         a = pp.randn_se3(10, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_output_dtype_preserved(self, device, dtype):
         """Test that output dtype matches input dtype."""
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         a = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
 
         result = SE3_AdjTXa_fwd(X, a)
 
@@ -502,13 +512,14 @@ class TestSE3AdjTXaWarpBackend:
         
         X = pp.randn_SE3(5, device=device, dtype=dtype)
         a = pp.randn_se3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(X, a)
         
         X_warp = to_warp_backend(X)
 
         result = X_warp.AdjT(a)
-        expected = X.AdjT(a)
+        expected = compute_reference_fp32(X, 'AdjT', a)
 
-        torch.testing.assert_close(result.tensor(), expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
+        torch.testing.assert_close(result.tensor(), expected, **get_fwd_tolerances(dtype, Operator.SE3_AdjTXa))
 
     def test_warp_backend_gradient(self, device, dtype_bwd):
         """Test that warp_SE3Type.AdjT gradients work correctly."""

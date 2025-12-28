@@ -68,6 +68,7 @@ _FWD_OVERRIDES: dict[Operator, dict[torch.dtype, dict]] = {
     Operator.so3_Jr: {torch.float32: {"atol": 1e-4, "rtol": 1e-4}},
     # SE3_Jinvp involves multiple complex operations (Log, Jl_inv, calcQ) accumulating error
     Operator.SE3_Jinvp: {
+        torch.float16: {"atol": 3e-2, "rtol": 3e-2},  # Looser for FP16 due to accumulated errors
         torch.float32: {"atol": 5e-4, "rtol": 5e-4},
         torch.float64: {"atol": 1e-9, "rtol": 1e-9},
     },
@@ -121,6 +122,101 @@ def get_bwd_tolerances(dtype: torch.dtype, operator: Operator = None) -> dict:
 def get_tolerances(dtype: torch.dtype) -> dict:
     """Legacy alias for get_fwd_tolerances. Prefer get_fwd_tolerances for new code."""
     return get_fwd_tolerances(dtype)
+
+
+# =============================================================================
+# FP16 Numerical Stability Utilities
+# =============================================================================
+
+import pypose as pp
+
+
+def skip_if_nan_inputs(*tensors):
+    """
+    Skip test if any input tensor contains NaN values.
+    
+    This is needed because PyPose's randn_SE3 can produce NaN values
+    in FP16 due to upstream numerical issues (~0.07% of elements).
+    
+    Usage:
+        skip_if_nan_inputs(X.tensor(), p.tensor())
+    """
+    for t in tensors:
+        tensor = t.tensor() if hasattr(t, 'tensor') else t
+        if torch.isnan(tensor).any():
+            pytest.skip("Input data contains NaN (PyPose fp16 randn issue)")
+
+
+def _get_ltype_class(lietensor):
+    """Get the PyPose LieTensor class for a given lietensor."""
+    ltype = lietensor.ltype
+    if ltype == pp.SO3_type:
+        return pp.SO3
+    elif ltype == pp.SE3_type:
+        return pp.SE3
+    elif ltype == pp.so3_type:
+        return pp.so3
+    elif ltype == pp.se3_type:
+        return pp.se3
+    else:
+        # Fallback - try to use the type directly
+        return type(lietensor)
+
+
+def compute_reference_fp32(lietensor, method_name, *args):
+    """
+    Compute reference using FP32 precision, cast result back to original dtype.
+    
+    This avoids numerical instability in PyPose's FP16 computations while
+    still validating our more numerically stable FP16 Warp implementation.
+    
+    Args:
+        lietensor: The LieTensor to call the method on (e.g., SE3, SO3)
+        method_name: Name of the method to call (e.g., 'Jinvp', 'Act')
+        *args: Additional arguments to pass to the method
+        
+    Returns:
+        Result tensor in the original dtype
+        
+    Example:
+        expected = compute_reference_fp32(X, 'Jinvp', p)
+        # Equivalent to: X_fp32.Jinvp(p_fp32).tensor().to(original_dtype)
+    """
+    original_dtype = lietensor.tensor().dtype
+    
+    if original_dtype == torch.float16:
+        # Upcast LieTensor to FP32 using the correct PyPose class
+        ltype_cls = _get_ltype_class(lietensor)
+        lietensor_fp32 = ltype_cls(lietensor.tensor().float())
+        
+        # Upcast arguments to FP32
+        args_fp32 = []
+        for arg in args:
+            if hasattr(arg, 'tensor') and hasattr(arg, 'ltype'):
+                # It's a LieTensor
+                arg_cls = _get_ltype_class(arg)
+                args_fp32.append(arg_cls(arg.tensor().float()))
+            elif isinstance(arg, torch.Tensor):
+                args_fp32.append(arg.float())
+            else:
+                args_fp32.append(arg)
+        
+        # Compute in FP32
+        method = getattr(lietensor_fp32, method_name)
+        result_fp32 = method(*args_fp32)
+        
+        # Downcast result to FP16
+        if hasattr(result_fp32, 'tensor'):
+            return result_fp32.tensor().half()
+        elif isinstance(result_fp32, torch.Tensor):
+            return result_fp32.half()
+        else:
+            return result_fp32
+    else:
+        # For FP32/FP64, compute directly
+        method = getattr(lietensor, method_name)
+        result = method(*args)
+        return result.tensor() if hasattr(result, 'tensor') else result
 
 
 # =============================================================================

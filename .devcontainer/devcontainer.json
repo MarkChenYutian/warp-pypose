@@ -17,5 +17,6 @@
       ]
     }
   },
-  "shutdownAction": "stopCompose"
+  "shutdownAction": "stopCompose",
+  "composeProjectName": "warp-pypose"
 }

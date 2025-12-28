@@ -61,6 +61,80 @@ DTYPE_TO_TRANSFORM: dict[type, type] = {
 
 
 # =============================================================================
+# Numerical Stability - Dtype-specific epsilon thresholds
+# =============================================================================
+
+# FP16 has limited precision: min positive = 6.1e-5, epsilon = 9.77e-4
+# When dividing by theta^n, we need theta^n > min_positive to avoid underflow
+# These thresholds are derived from (6.1e-5)^(1/n) with safety margin
+
+_FP16_EPS_BY_POWER: dict[int, float] = {
+    2: 0.02,    # theta^2 underflows when theta < 0.008, extra margin for stability
+    3: 0.08,    # theta^3 underflows when theta < 0.04, extra margin for stability
+    4: 0.12,    # theta^4 underflows when theta < 0.09, extra margin for stability
+    5: 0.20,    # theta^5 underflows when theta < 0.14, extra margin for stability
+}
+
+_FP32_EPS = 1e-6
+_FP64_EPS = 1e-12
+
+
+def get_eps_for_dtype(dtype, power: int = 2) -> float:
+    """
+    Get appropriate epsilon threshold for divisions by theta^power.
+    
+    This is critical for numerical stability in FP16 where theta^n can
+    underflow to zero, causing division by zero and NaN results.
+    
+    Args:
+        dtype: Warp scalar type (wp.float16, wp.float32, wp.float64)
+        power: The power of theta in the denominator (2, 3, 4, or 5)
+        
+    Returns:
+        Appropriate epsilon threshold for the given dtype and power
+        
+    Example:
+        For so3_Jl_inv which divides by theta^2:
+            eps = get_eps_for_dtype(wp.float16, power=2)  # returns 0.02
+            
+        For calcQ which divides by theta^5:
+            eps = get_eps_for_dtype(wp.float16, power=5)  # returns 0.20
+    """
+    if dtype == wp.float16:
+        return _FP16_EPS_BY_POWER.get(power, 0.05)
+    elif dtype == wp.float32:
+        return _FP32_EPS
+    else:
+        return _FP64_EPS
+
+
+def get_eps_for_torch_dtype(dtype: torch.dtype, power: int = 2) -> float:
+    """
+    Get appropriate epsilon threshold for PyTorch tensors.
+    
+    This mirrors get_eps_for_dtype but works with PyTorch dtypes instead of
+    Warp dtypes. Useful for backward passes that use PyTorch autograd.
+    
+    Args:
+        dtype: PyTorch dtype (torch.float16, torch.float32, torch.float64)
+        power: The power of theta in the denominator (2, 3, 4, or 5)
+        
+    Returns:
+        Appropriate epsilon threshold for the given dtype and power
+        
+    Example:
+        For so3_Jr_bwd which divides by theta^3:
+            eps = get_eps_for_torch_dtype(torch.float16, power=3)  # returns 0.08
+    """
+    if dtype == torch.float16:
+        return _FP16_EPS_BY_POWER.get(power, 0.05)
+    elif dtype == torch.float32:
+        return _FP32_EPS
+    else:
+        return _FP64_EPS
+
+
+# =============================================================================
 # Kernel Registry - Global cache for instantiated kernels
 # =============================================================================
 

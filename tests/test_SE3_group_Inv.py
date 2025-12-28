@@ -3,7 +3,7 @@ import pytest
 import torch
 import pypose as pp
 from pypose_warp.ltype.SE3_group import SE3_Inv, SE3_Inv_fwd
-from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator
+from conftest import get_fwd_tolerances, get_bwd_tolerances, Operator, skip_if_nan_inputs, compute_reference_fp32
 
 
 class TestSE3InvBatchDimensions:
@@ -12,57 +12,62 @@ class TestSE3InvBatchDimensions:
     def test_1d_batch(self, device, dtype):
         """Test with 1D batch dimension."""
         se3 = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
         assert result.shape == expected.shape == (5, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
     def test_2d_batch(self, device, dtype):
         """Test with 2D batch dimensions."""
         se3 = pp.randn_SE3(3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
         assert result.shape == expected.shape == (3, 4, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
     def test_3d_batch(self, device, dtype):
         """Test with 3D batch dimensions."""
         se3 = pp.randn_SE3(2, 3, 4, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
         assert result.shape == expected.shape == (2, 3, 4, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
     def test_4d_batch(self, device, dtype):
         """Test with 4D batch dimensions."""
         se3 = pp.randn_SE3(2, 3, 4, 5, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
         assert result.shape == expected.shape == (2, 3, 4, 5, 7)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
     def test_scalar_no_batch(self, device, dtype):
         """Test with no batch dimensions (single transform)."""
         se3 = pp.randn_SE3(device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
         assert result.shape == expected.shape == (7,)
         assert result.dtype == dtype
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
 
 class TestSE3InvPrecision:
@@ -92,15 +97,17 @@ class TestSE3InvPrecision:
         """Test float16 precision and accuracy."""
         dtype = torch.float16
         se3 = pp.randn_SE3(10, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
-        expected = se3.Inv()
+        expected = compute_reference_fp32(se3, 'Inv')
 
-        torch.testing.assert_close(result, expected.tensor(), **get_fwd_tolerances(dtype, Operator.SE3_Inv))
+        torch.testing.assert_close(result, expected, **get_fwd_tolerances(dtype, Operator.SE3_Inv))
 
     def test_output_dtype_preserved(self, device, dtype):
         """Test that output dtype matches input dtype."""
         se3 = pp.randn_SE3(5, device=device, dtype=dtype)
+        skip_if_nan_inputs(se3)
 
         result = SE3_Inv_fwd(se3)
 
