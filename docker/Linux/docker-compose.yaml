@@ -1,9 +1,17 @@
+# Network isolation for this project
+networks:
+  warp-pypose-network:
+    name: warp-pypose-network
+    driver: bridge
+
 # System-level configuration are the same for all develop services
 x-common-config: &common-config
-  hostname: ${HOSTNAME:pypose}-dev
+  hostname: warp-pypose-dev
+  networks:
+    - warp-pypose-network
   volumes:
-    - ../../:/workspace
-  working_dir: /workspace
+    - ../../:/warp-workspace
+  working_dir: /warp-workspace
   deploy:
     resources:
       reservations:
@@ -21,7 +29,7 @@ x-common-config: &common-config
   privileged: true
 
   # Sufficient IPC shared memory for PyTorch as instructed in NVIDIA container.
-  ipc: host
+  # ipc: host # We don't need IPC for this project.
   ulimits:
     memlock:
       soft: -1
@@ -78,7 +86,7 @@ services:
       - PATH=/opt/nvidia/nsight-systems/2025.4.1/bin:/opt/nvidia/nsight-compute/2025.3.0/bin:$PATH
     
     volumes:
-      - ../../:/workspace
+      - ../../:/warp-workspace
       - /opt/nvidia/nsight-systems/:/opt/nvidia/nsight-systems/
       - /opt/nvidia/nsight-compute/:/opt/nvidia/nsight-compute/
   
@@ -99,7 +107,7 @@ services:
       - PATH=/opt/nvidia/nsight-systems/2024.5.4/bin:/opt/nvidia/nsight-compute/2024.3.1/bin:$PATH
     
     volumes:
-      - ../../:/workspace
+      - ../../:/warp-workspace
       - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra
       - /usr/lib/aarch64-linux-gnu/libjpeg.so.8:/usr/lib/aarch64-linux-gnu/libjpeg.so.8
       - /opt/nvidia/nsight-systems/:/opt/nvidia/nsight-systems/
@@ -110,4 +118,5 @@ services:
 
     image: ${DEV_IMAGE}
     platform: ${DEV_PLATFORM}
+    container_name: warp-pypose-unified-dev
     command: sleep infinity

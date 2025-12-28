@@ -9,7 +9,7 @@
 
   // Point to the single variable-driven service
   "service": "dev-unified-entry",
-  "workspaceFolder": "/workspace",  
+  "workspaceFolder": "/warp-workspace",  
   "customizations": {
     "vscode": {
       "extensions": [

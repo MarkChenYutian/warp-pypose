@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Setup the working directory
-WORKDIR /home/root/workspace
+WORKDIR /home/root/warp-workspace
 
 # Freeze some key packages from the current environment
 RUN  pip freeze | grep -E '^(torch==|torchvision==|numpy==|scipy==|tensorrt==)' \
