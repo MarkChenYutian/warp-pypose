@@ -13,9 +13,22 @@ from .AdjXa import SE3_AdjXa, SE3_AdjXa_fwd, SE3_AdjXa_bwd
 from .AdjTXa import SE3_AdjTXa, SE3_AdjTXa_fwd, SE3_AdjTXa_bwd
 from .Jinvp import SE3_Jinvp, SE3_Jinvp_fwd, SE3_Jinvp_bwd
 from .Mat import SE3_Mat, SE3_Mat_fwd, SE3_Mat_bwd
+from .Log import SE3_Log, SE3_Log_fwd, SE3_Log_bwd
 
 
 class warp_SE3Type(SE3Type):
+    def Log(self, X: pp.LieTensor) -> pp.LieTensor:
+        """
+        Compute the logarithm map of SE3, mapping to se3 Lie algebra.
+        
+        Args:
+            X: SE3 LieTensor of shape (..., 7) - [tx, ty, tz, qx, qy, qz, qw]
+            
+        Returns:
+            se3 LieTensor of shape (..., 6) - [tau_x, tau_y, tau_z, phi_x, phi_y, phi_z]
+        """
+        return SE3_Log.apply(X)
+
     def Act(self, X: pp.LieTensor, p: torch.Tensor):
         assert not self.on_manifold and isinstance(p, torch.Tensor)
         assert p.shape[-1] == 3 or p.shape[-1] == 4, "Invalid Tensor Dimension"

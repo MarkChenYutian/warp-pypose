@@ -1,5 +1,5 @@
 """
-Automated benchmark runner for SE3 group operators.
+Automated benchmark runner for SE3 algebra (se3) operators.
 
 Generates PNG charts comparing Warp vs PyPose backend performance across:
 - Devices: CPU and CUDA
@@ -10,7 +10,7 @@ Generates PNG charts comparing Warp vs PyPose backend performance across:
 Each operator gets a separate PNG with multiple subplots.
 
 Usage:
-    python -m bench.SE3_group
+    python -m bench.SE3_algebra
 """
 import os
 import sys
@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Act, Act4, Inv, Mul, AdjXa, AdjTXa, Jinvp, Mat, Log
+from . import Exp
 
 
 # ============================================================================
@@ -79,57 +79,9 @@ class OperatorInfo:
 # Define all operators
 OPERATORS = [
     OperatorInfo(
-        name="Act",
-        bench_forward=Act.bench_forward,
-        bench_backward=Act.bench_backward,
-        has_kind=True,
-    ),
-    OperatorInfo(
-        name="Act4",
-        bench_forward=Act4.bench_forward,
-        bench_backward=Act4.bench_backward,
-        has_kind=True,
-    ),
-    OperatorInfo(
-        name="Inv",
-        bench_forward=Inv.bench_forward,
-        bench_backward=Inv.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="Mul",
-        bench_forward=Mul.bench_forward,
-        bench_backward=Mul.bench_backward,
-        has_kind=True,
-    ),
-    OperatorInfo(
-        name="AdjXa",
-        bench_forward=AdjXa.bench_forward,
-        bench_backward=AdjXa.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="AdjTXa",
-        bench_forward=AdjTXa.bench_forward,
-        bench_backward=AdjTXa.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="Jinvp",
-        bench_forward=Jinvp.bench_forward,
-        bench_backward=Jinvp.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="Mat",
-        bench_forward=Mat.bench_forward,
-        bench_backward=Mat.bench_backward,
-        has_kind=False,
-    ),
-    OperatorInfo(
-        name="Log",
-        bench_forward=Log.bench_forward,
-        bench_backward=Log.bench_backward,
+        name="Exp",
+        bench_forward=Exp.bench_forward,
+        bench_backward=Exp.bench_backward,
         has_kind=False,
     ),
 ]
@@ -350,7 +302,7 @@ def create_operator_plot(op: OperatorInfo, results: list[BenchResult]):
     
     # Main title
     fig.suptitle(
-        f'SE3 {op.name} Benchmark: Warp vs PyPose',
+        f'se3 {op.name} Benchmark: Warp vs PyPose',
         fontsize=18, color='#f0f6fc', fontweight='bold', y=0.98
     )
     
@@ -393,7 +345,7 @@ def create_operator_plot(op: OperatorInfo, results: list[BenchResult]):
 def main():
     """Run benchmarks for all operators and generate plots."""
     print("=" * 80)
-    print("SE3 Group Operators Benchmark Suite")
+    print("se3 (SE3 Algebra) Operators Benchmark Suite")
     print("=" * 80)
     print(f"Sizes: {SIZES}")
     print(f"Dtypes: {DTYPES}")

@@ -2,7 +2,7 @@ import warp as wp
 import pypose as pp
 from pypose.lietensor.lietensor import LieType
 
-from .ltype import warpSO3_type, warpso3_type, warpSE3_type
+from .ltype import warpSO3_type, warpso3_type, warpSE3_type, warpse3_type
 wp.init()
 
 
@@ -11,6 +11,7 @@ _BACKEND_LIST: list[tuple[LieType, LieType | None]] = [
     (pp.SO3_type  , warpSO3_type),
     (pp.so3_type  , warpso3_type),
     (pp.SE3_type  , warpSE3_type),
+    (pp.se3_type  , warpse3_type),
     (pp.Sim3_type , None),
     (pp.RxSO3_type, None)
 ]
@@ -38,7 +39,7 @@ def to_pypose_backend(x: pp.LieTensor) -> pp.LieTensor:
 def is_warp_backend(x: pp.LieTensor) -> bool:
     return x.ltype in {
         warpSO3_type, warpso3_type,
-        warpSE3_type
+        warpSE3_type, warpse3_type
     }
 
 
