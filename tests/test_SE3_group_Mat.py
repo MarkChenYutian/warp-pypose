@@ -229,7 +229,13 @@ class TestSE3MatEdgeCases:
 
     def test_large_batch(self, device, dtype):
         """Test with a large batch size."""
-        X = pp.randn_SE3(1000, device=device, dtype=dtype)
+        # Use smaller random values for fp16 to avoid NaN from numerical overflow
+        if dtype == torch.float16:
+            X_tensor = torch.randn(1000, 7, device=device, dtype=dtype) * 0.5
+            X_tensor[..., 3:] = X_tensor[..., 3:] / X_tensor[..., 3:].norm(dim=-1, keepdim=True)
+            X = pp.LieTensor(X_tensor, ltype=pp.SE3_type)
+        else:
+            X = pp.randn_SE3(1000, device=device, dtype=dtype)
         X_warp = to_warp_backend(X)
         
         result = SE3_Mat_fwd(X_warp)
@@ -264,41 +270,74 @@ class TestSE3MatErrors:
 # =============================================================================
 
 
-class TestSE3MatBwdGradcheck:
-    """Test SE3_Mat backward with torch.autograd.gradcheck."""
+class TestSE3MatBwdMatchesPyPose:
+    """Test SE3_Mat backward matches PyPose's backward.
+    
+    Note: We don't use gradcheck for LieTensor operations because:
+    1. LieTensors have constraints (unit quaternions) that gradcheck doesn't understand
+    2. Gradients are computed in tangent space, not representation space
+    3. The correct validation is comparing against PyPose's backward
+    """
 
-    def test_gradcheck_1d(self, device):
-        """Test gradcheck with 1D batch."""
-        dtype = torch.float64
-        X = pp.randn_SE3(3, device=device, dtype=dtype, requires_grad=True)
-        X_warp = to_warp_backend(X)
+    def test_backward_matches_pypose_1d(self, device, dtype_bwd):
+        """Test that warp backward matches PyPose backward with 1D batch."""
+        X_tensor_native = torch.randn(3, 7, device=device, dtype=dtype_bwd, requires_grad=True)
+        # Normalize quaternion part
+        X_tensor_native.data[..., 3:] = X_tensor_native[..., 3:] / X_tensor_native[..., 3:].norm(dim=-1, keepdim=True)
+        X_tensor_warp = X_tensor_native.clone().detach().requires_grad_(True)
         
-        def func(x):
-            return SE3_Mat.apply(pp.LieTensor(x, ltype=X_warp.ltype))
+        # PyPose native
+        X_native = pp.LieTensor(X_tensor_native, ltype=pp.SE3_type)
+        result_native = X_native.matrix()
+        result_native.sum().backward()
+        native_grad = X_tensor_native.grad.clone()
         
-        torch.autograd.gradcheck(func, (X_warp.tensor(),), atol=1e-6, rtol=1e-6)
+        # Warp
+        X_warp = pp.LieTensor(X_tensor_warp, ltype=pp.SE3_type)
+        X_warp = to_warp_backend(X_warp)
+        result_warp = SE3_Mat.apply(X_warp)
+        result_warp.sum().backward()
+        warp_grad = X_tensor_warp.grad.clone()
+        
+        torch.testing.assert_close(warp_grad, native_grad, **get_bwd_tolerances(dtype_bwd, Operator.SE3_Mat))
 
-    def test_gradcheck_2d(self, device):
-        """Test gradcheck with 2D batch."""
-        dtype = torch.float64
-        X = pp.randn_SE3(2, 3, device=device, dtype=dtype, requires_grad=True)
-        X_warp = to_warp_backend(X)
+    def test_backward_matches_pypose_2d(self, device, dtype_bwd):
+        """Test that warp backward matches PyPose backward with 2D batch."""
+        X_tensor_native = torch.randn(2, 3, 7, device=device, dtype=dtype_bwd, requires_grad=True)
+        X_tensor_native.data[..., 3:] = X_tensor_native[..., 3:] / X_tensor_native[..., 3:].norm(dim=-1, keepdim=True)
+        X_tensor_warp = X_tensor_native.clone().detach().requires_grad_(True)
         
-        def func(x):
-            return SE3_Mat.apply(pp.LieTensor(x, ltype=X_warp.ltype))
+        X_native = pp.LieTensor(X_tensor_native, ltype=pp.SE3_type)
+        result_native = X_native.matrix()
+        result_native.sum().backward()
+        native_grad = X_tensor_native.grad.clone()
         
-        torch.autograd.gradcheck(func, (X_warp.tensor(),), atol=1e-6, rtol=1e-6)
+        X_warp = pp.LieTensor(X_tensor_warp, ltype=pp.SE3_type)
+        X_warp = to_warp_backend(X_warp)
+        result_warp = SE3_Mat.apply(X_warp)
+        result_warp.sum().backward()
+        warp_grad = X_tensor_warp.grad.clone()
+        
+        torch.testing.assert_close(warp_grad, native_grad, **get_bwd_tolerances(dtype_bwd, Operator.SE3_Mat))
 
-    def test_gradcheck_scalar(self, device):
-        """Test gradcheck with scalar input."""
-        dtype = torch.float64
-        X = pp.randn_SE3(device=device, dtype=dtype, requires_grad=True)
-        X_warp = to_warp_backend(X)
+    def test_backward_matches_pypose_scalar(self, device, dtype_bwd):
+        """Test that warp backward matches PyPose backward with scalar input."""
+        X_tensor_native = torch.randn(7, device=device, dtype=dtype_bwd, requires_grad=True)
+        X_tensor_native.data[3:] = X_tensor_native[3:] / X_tensor_native[3:].norm()
+        X_tensor_warp = X_tensor_native.clone().detach().requires_grad_(True)
         
-        def func(x):
-            return SE3_Mat.apply(pp.LieTensor(x, ltype=X_warp.ltype))
+        X_native = pp.LieTensor(X_tensor_native, ltype=pp.SE3_type)
+        result_native = X_native.matrix()
+        result_native.sum().backward()
+        native_grad = X_tensor_native.grad.clone()
         
-        torch.autograd.gradcheck(func, (X_warp.tensor(),), atol=1e-6, rtol=1e-6)
+        X_warp = pp.LieTensor(X_tensor_warp, ltype=pp.SE3_type)
+        X_warp = to_warp_backend(X_warp)
+        result_warp = SE3_Mat.apply(X_warp)
+        result_warp.sum().backward()
+        warp_grad = X_tensor_warp.grad.clone()
+        
+        torch.testing.assert_close(warp_grad, native_grad, **get_bwd_tolerances(dtype_bwd, Operator.SE3_Mat))
 
 
 class TestSE3MatBwdEdgeCases:

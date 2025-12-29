@@ -14,6 +14,7 @@ from .AdjTXa import SE3_AdjTXa, SE3_AdjTXa_fwd, SE3_AdjTXa_bwd
 from .Jinvp import SE3_Jinvp, SE3_Jinvp_fwd, SE3_Jinvp_bwd
 from .Mat import SE3_Mat, SE3_Mat_fwd, SE3_Mat_bwd
 from .Log import SE3_Log, SE3_Log_fwd, SE3_Log_bwd
+from .AddExp import SE3_AddExp, SE3_AddExp_fwd, SE3_AddExp_bwd
 
 
 class warp_SE3Type(SE3Type):
@@ -148,7 +149,9 @@ class warp_SE3Type(SE3Type):
 
     @classmethod
     def add_(cls, input, other):
-        return input.copy_(LieTensor(other[..., :6], ltype=pp.se3_type).Exp() * input)
+        from ..SE3_algebra import warpse3_type
+        # Fused Exp(delta) * X operation
+        return input.copy_(SE3_AddExp.apply(pp.LieTensor(other[..., :6], ltype=warpse3_type), input))
 
 
 warpSE3_type = warp_SE3Type()

@@ -13,7 +13,9 @@ _BACKEND_LIST: list[tuple[LieType, LieType | None]] = [
     (pp.SE3_type  , warpSE3_type),
     (pp.se3_type  , warpse3_type),
     (pp.Sim3_type , None),
-    (pp.RxSO3_type, None)
+    (pp.sim3_type , None),
+    (pp.RxSO3_type, None),
+    (pp.rxso3_type, None)
 ]
 _PP_TO_WP = {pp_ltype : wp_ltype for pp_ltype, wp_ltype in _BACKEND_LIST}
 _WP_TO_PP = {wp_ltype : pp_ltype for pp_ltype, wp_ltype in _BACKEND_LIST}

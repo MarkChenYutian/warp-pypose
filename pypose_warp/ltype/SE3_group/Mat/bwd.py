@@ -4,17 +4,17 @@
 """
 Backward pass for SE3 Mat: gradient of 4x4 transformation matrix w.r.t SE3 pose.
 
-SE3 representation: [tx, ty, tz, qx, qy, qz, qw] (7 elements)
+PyPose SE3.matrix() uses: X.unsqueeze(-2).Act(I4).transpose(-1,-2)
+This means:
+1. Act4 is applied to each row of 4x4 identity
+2. The result is transposed
 
-4x4 Transformation matrix:
-    [ R  | t ]     [ R00 R01 R02 | tx ]
-    [----+---]  =  [ R10 R11 R12 | ty ]
-    [ 0  | 1 ]     [ R20 R21 R22 | tz ]
-                   [  0   0   0  | 1  ]
+The backward uses SE3_Act4_Jacobian which computes:
+- J[:3, :3] = I3x3 * p[3]  (only active for position points, not direction vectors)
+- J[:3, 3:6] = skew(-p[:3])  (rotation gradient in tangent space)
+- J[3, :] = 0
 
-Gradient derivation:
-- grad_t = [grad_M[0,3], grad_M[1,3], grad_M[2,3]] (translation is directly in the matrix)
-- grad_q uses the same formula as SO3_Mat_bwd applied to the 3x3 rotation submatrix
+The total gradient sums contributions from all 4 Act4 operations.
 """
 
 import torch
@@ -22,6 +22,7 @@ import warp as wp
 import typing as T
 
 from ....utils.warp_utils import wp_mat44_type, wp_transform_type
+from ...common.warp_functions import so3_Jl, so3_exp_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     KernelRegistry,
@@ -54,21 +55,24 @@ _DTYPE_TO_TRANSFORM_CTOR = {
 
 
 # =============================================================================
-# Helper function for computing SE3_Mat gradient
+# Helper function for computing SE3_Mat gradient using Act4 Jacobian
 #
-# Uses the same quaternion gradient formula as SO3_Mat_bwd for the rotation part.
-# Translation gradient is directly read from the matrix gradient.
+# SE3.matrix() = transpose(Act4(X, I4))
+# Backward: sum of Act4 gradients for each identity row
 # =============================================================================
 
 def _make_compute_se3_mat_grad(dtype):
     vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
     quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
     transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    so3_exp = so3_exp_wp_func(dtype)
     
     @wp.func
     def compute_se3_mat_grad(X: T.Any, G: T.Any) -> T.Any:
         """
         Compute SE3 gradient from 4x4 matrix gradient.
+        
+        Uses SE3_Act4_Jacobian formula from PyPose.
         
         Args:
             X: SE3 transform [t, q]
@@ -77,36 +81,63 @@ def _make_compute_se3_mat_grad(dtype):
         Returns:
             Gradient w.r.t. SE3 pose as transform type [grad_t, grad_q]
         """
-        # Extract quaternion from transform
+        # Extract translation and rotation matrix from X
+        t = wp.transform_get_translation(X)
         q = wp.transform_get_rotation(X)
-        x = q[0]
-        y = q[1]
-        z = q[2]
-        w = q[3]
+        R = wp.quat_to_matrix(q)
         
-        # Translation gradient: directly from matrix gradient column 3 (indices 0,1,2)
-        grad_tx = G[0, 3]
-        grad_ty = G[1, 3]
-        grad_tz = G[2, 3]
+        # For SE3.matrix() = transpose(Act4(X, I4)):
+        # - Before transpose: row j = Act4(X, I[j])
+        # - After transpose: col j = Act4(X, I[j])
+        # So grad_M[:, j] is the gradient for Act4 output j
         
-        # Quaternion gradient: same formula as SO3_Mat_bwd using 3x3 rotation submatrix
-        # Symmetric and antisymmetric combinations
-        G01_plus_G10 = G[0, 1] + G[1, 0]
-        G02_plus_G20 = G[0, 2] + G[2, 0]
-        G12_plus_G21 = G[1, 2] + G[2, 1]
+        # Compute Act4 outputs for each identity column
+        # out_j = [t + R @ e_j[:3], e_j[3]] where e_j is identity row j
+        # For j=0,1,2: out_j = [R[:, j], 0] (direction vectors, w=0)
+        # For j=3: out_j = [t, 1] (position, w=1)
         
-        G21_minus_G12 = G[2, 1] - G[1, 2]
-        G02_minus_G20 = G[0, 2] - G[2, 0]
-        G10_minus_G01 = G[1, 0] - G[0, 1]
+        # SE3_Act4_Jacobian(p) where p is 4D output:
+        # J[:3, :3] = I3x3 * p[3]  # translation gradient (only when w=1)
+        # J[:3, 3:6] = skew(-p[:3])  # rotation gradient (tangent space)
+        # J[3, :] = 0
         
-        grad_qx = dtype(4.0) * x * G[0, 0] + dtype(2.0) * y * G01_plus_G10 + dtype(2.0) * z * G02_plus_G20 + dtype(2.0) * w * G21_minus_G12
-        grad_qy = dtype(2.0) * x * G01_plus_G10 + dtype(4.0) * y * G[1, 1] + dtype(2.0) * z * G12_plus_G21 + dtype(2.0) * w * G02_minus_G20
-        grad_qz = dtype(2.0) * x * G02_plus_G20 + dtype(2.0) * y * G12_plus_G21 + dtype(4.0) * z * G[2, 2] + dtype(2.0) * w * G10_minus_G01
-        grad_qw = dtype(4.0) * w * (G[0, 0] + G[1, 1] + G[2, 2]) + dtype(2.0) * x * G21_minus_G12 + dtype(2.0) * y * G02_minus_G20 + dtype(2.0) * z * G10_minus_G01
+        # Initialize gradient accumulators
+        grad_t = vec3_ctor(dtype(0.0), dtype(0.0), dtype(0.0))
+        grad_phi = vec3_ctor(dtype(0.0), dtype(0.0), dtype(0.0))
         
-        # Construct gradient transform [grad_t, grad_q] using dtype-specific constructors
-        grad_t = vec3_ctor(grad_tx, grad_ty, grad_tz)
-        grad_q = quat_ctor(grad_qx, grad_qy, grad_qz, grad_qw)
+        # Column 0: out_0 = [R[:, 0], 0]
+        # grad_out_0 = G[:, 0]
+        # J_0[:3, :3] = 0 (since w=0)
+        # J_0[:3, 3:6] = skew(-R[:, 0])
+        # skew(-v) @ grad = grad x v = -v x grad
+        out0 = vec3_ctor(R[0, 0], R[1, 0], R[2, 0])
+        grad_out0 = vec3_ctor(G[0, 0], G[1, 0], G[2, 0])
+        grad_phi = grad_phi + wp.cross(out0, grad_out0)  # -skew(out0)^T @ grad = out0 x grad
+        
+        # Column 1: out_1 = [R[:, 1], 0]
+        out1 = vec3_ctor(R[0, 1], R[1, 1], R[2, 1])
+        grad_out1 = vec3_ctor(G[0, 1], G[1, 1], G[2, 1])
+        grad_phi = grad_phi + wp.cross(out1, grad_out1)
+        
+        # Column 2: out_2 = [R[:, 2], 0]
+        out2 = vec3_ctor(R[0, 2], R[1, 2], R[2, 2])
+        grad_out2 = vec3_ctor(G[0, 2], G[1, 2], G[2, 2])
+        grad_phi = grad_phi + wp.cross(out2, grad_out2)
+        
+        # Column 3: out_3 = [t, 1]
+        # grad_out_3 = G[:, 3]
+        # J_3[:3, :3] = I3x3 (since w=1)
+        # J_3[:3, 3:6] = skew(-t)
+        grad_out3 = vec3_ctor(G[0, 3], G[1, 3], G[2, 3])
+        grad_t = grad_out3  # I3x3 @ grad_out3 = grad_out3
+        grad_phi = grad_phi + wp.cross(t, grad_out3)  # -skew(t)^T @ grad = t x grad
+        
+        # Convert grad_phi (tangent space) to grad_q (quaternion space)
+        # Using the relationship: grad_q = 0.5 * q * grad_phi (as a pure quaternion)
+        # But PyPose returns [grad_t, grad_phi, 0] and lets se3_Exp.backward handle conversion
+        # So we return grad as [grad_t, grad_phi_x, grad_phi_y, grad_phi_z, 0]
+        
+        grad_q = quat_ctor(grad_phi[0], grad_phi[1], grad_phi[2], dtype(0.0))
         
         return transform_ctor(grad_t, grad_q)
     
@@ -192,6 +223,9 @@ def SE3_Mat_bwd(
     """
     Backward pass for SE3_Mat.
     
+    Returns gradient in the form [grad_t, grad_phi, 0] where grad_phi is
+    in the tangent space. This is compatible with se3_Exp backward.
+    
     Args:
         X: SE3 tensor of shape (..., 7) - [tx, ty, tz, qx, qy, qz, qw]
         grad_output: Gradient w.r.t. output matrix, shape (..., 4, 4)
@@ -233,4 +267,3 @@ def SE3_Mat_bwd(
     )
     
     return finalize_output(grad_X_tensor, batch_info)
-

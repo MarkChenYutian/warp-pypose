@@ -47,8 +47,10 @@ class Operator(Enum):
     SE3_Jinvp = "SE3_Jinvp"
     SE3_Mat = "SE3_Mat"
     SE3_Log = "SE3_Log"
+    SE3_AddExp = "SE3_AddExp"
     # SE3 Algebra operators
     se3_Exp = "se3_Exp"
+    se3_Mat = "se3_Mat"
 
 
 # =============================================================================
@@ -82,6 +84,16 @@ _FWD_OVERRIDES: dict[Operator, dict[torch.dtype, dict]] = {
         torch.float16: {"atol": 3e-2, "rtol": 3e-2},
         torch.float32: {"atol": 2e-4, "rtol": 2e-3},
     },
+    # SE3_AddExp fuses se3_Exp and SE3_Mul with accumulated numerical errors
+    Operator.SE3_AddExp: {
+        torch.float16: {"atol": 5e-2, "rtol": 5e-2},
+        torch.float32: {"atol": 5e-4, "rtol": 5e-3},
+    },
+    # se3_Mat involves se3_Exp and SE3.matrix() operations
+    Operator.se3_Mat: {
+        torch.float16: {"atol": 3e-2, "rtol": 3e-2},
+        torch.float32: {"atol": 2e-4, "rtol": 2e-3},
+    },
 }
 
 # Operator-specific backward overrides
@@ -91,6 +103,10 @@ _BWD_OVERRIDES: dict[Operator, dict[torch.dtype, dict]] = {
     Operator.so3_Jr: {torch.float32: {"atol": 1e-4, "rtol": 1e-4}},
     # se3_Exp backward involves se3_Jl with complex matrix operations
     Operator.se3_Exp: {torch.float32: {"atol": 5e-2, "rtol": 5e-2}},
+    # SE3_AddExp backward involves se3_Jl and SE3 adjoint computations
+    Operator.SE3_AddExp: {torch.float32: {"atol": 5e-2, "rtol": 5e-2}},
+    # se3_Mat backward involves SE3_Act4_Jacobian and se3_Jl
+    Operator.se3_Mat: {torch.float32: {"atol": 5e-2, "rtol": 5e-2}},
 }
 
 

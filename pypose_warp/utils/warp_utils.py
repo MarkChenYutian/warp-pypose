@@ -26,6 +26,15 @@ def wp_vec4_type(dtype: torch.dtype):
         case _: raise NotImplementedError()
 
 
+def wp_vec6_type(dtype: torch.dtype):
+    """Warp vector type for 6D vectors (se3 twists, etc.)."""
+    match dtype:
+        case torch.float64: return wp.types.vector(length=6, dtype=wp.float64)
+        case torch.float32: return wp.types.vector(length=6, dtype=wp.float32)
+        case torch.float16: return wp.types.vector(length=6, dtype=wp.float16)
+        case _: raise NotImplementedError()
+
+
 def wp_mat33_type(dtype: torch.dtype):
     match dtype:
         case torch.float64: return wp.mat33d
