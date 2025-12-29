@@ -21,6 +21,10 @@ from ...common.kernel_utils import (
 # SO3_AdjTXa forward:
 #   out = SO3_Adj(X^{-1}) @ a = R^T @ a
 # where R = quat_to_matrix(X) is the 3x3 rotation matrix.
+#
+# OPTIMIZATION: Uses wp.quat_rotate_inv(q, v) instead of transpose(quat_to_matrix(q)) @ v.
+# This is mathematically equivalent but more efficient as it avoids
+# constructing and transposing the 3x3 rotation matrix.
 # =============================================================================
 
 def _make_kernel_1d(dtype):
@@ -31,8 +35,7 @@ def _make_kernel_1d(dtype):
         out: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        R = wp.quat_to_matrix(X[i])
-        out[i] = wp.transpose(R) @ a[i]
+        out[i] = wp.quat_rotate_inv(X[i], a[i])
     return implement
 
 
@@ -44,8 +47,7 @@ def _make_kernel_2d(dtype):
         out: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j])
-        out[i, j] = wp.transpose(R) @ a[i, j]
+        out[i, j] = wp.quat_rotate_inv(X[i, j], a[i, j])
     return implement
 
 
@@ -57,8 +59,7 @@ def _make_kernel_3d(dtype):
         out: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k])
-        out[i, j, k] = wp.transpose(R) @ a[i, j, k]
+        out[i, j, k] = wp.quat_rotate_inv(X[i, j, k], a[i, j, k])
     return implement
 
 
@@ -70,8 +71,7 @@ def _make_kernel_4d(dtype):
         out: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k, l])
-        out[i, j, k, l] = wp.transpose(R) @ a[i, j, k, l]
+        out[i, j, k, l] = wp.quat_rotate_inv(X[i, j, k, l], a[i, j, k, l])
     return implement
 
 

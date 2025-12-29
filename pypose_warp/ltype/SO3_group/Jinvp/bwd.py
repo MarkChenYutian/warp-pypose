@@ -5,9 +5,11 @@ import torch
 import warp as wp
 import typing as T
 
-from ...common.warp_functions import SO3_log_wp_func, so3_Jl_inv
+from ...common.warp_functions import SO3_log_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_QUAT,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
@@ -25,18 +27,30 @@ from ...common.kernel_utils import (
 # Given grad_output (gradient w.r.t. output), compute:
 #   - grad_X: gradient w.r.t. quaternion X (shape ..., 4)
 #   - grad_p: gradient w.r.t. tangent vector p (shape ..., 3)
+#
+# OPTIMIZATION: Fused computation that computes so3 and Jl_inv only once
+# for both grad_X and grad_p, eliminating redundant calls.
 # =============================================================================
 
-def _make_compute_jinvp_grad(dtype):
-    """Generate dtype-specific backward computation for Jinvp."""
-    so3_Jl_inv_impl = so3_Jl_inv(dtype)
+def _make_compute_jinvp_grads_fused(dtype):
+    """Generate dtype-specific fused backward computation for Jinvp.
     
+    This fused version computes both grad_X and grad_p in a single pass,
+    sharing the expensive so3 (Log) and Jl_inv computations between them.
+    """
     # Get dtype-specific epsilon for theta^2 division
     eps_val = get_eps_for_dtype(dtype, power=2)
     
+    # Get vector and quaternion constructors for this dtype
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    
     @wp.func
-    def compute_grad_X(q: T.Any, p: T.Any, grad_out: T.Any) -> T.Any:
-        """Compute gradient w.r.t. X (quaternion)."""
+    def compute_grads_fused(q: T.Any, p: T.Any, grad_out: T.Any, grad_X_out: T.Any, grad_p_out: T.Any):
+        """Compute both grad_X and grad_p in a single pass, sharing common computation."""
+        # =====================================================================
+        # SHARED COMPUTATION: Log and Jl_inv (computed only once)
+        # =====================================================================
         so3 = SO3_log_wp_func(q)
         K = wp.skew(so3)
         I = wp.identity(n=3, dtype=dtype)
@@ -64,8 +78,21 @@ def _make_compute_jinvp_grad(dtype):
             coef2 = dtype(1.0) / dtype(12.0)
             dcoef2_dtheta = dtype(0.0)
         
-        Jl_inv = I - dtype(0.5) * K + coef2 * (K @ K)
+        # Jl_inv is needed by both grad_X and grad_p
         K2 = K @ K
+        Jl_inv = I - dtype(0.5) * K + coef2 * K2
+        Jl_inv_T = wp.transpose(Jl_inv)
+        
+        # =====================================================================
+        # GRAD_P COMPUTATION: grad_p = Jl_inv^T @ grad_out
+        # (Uses shared Jl_inv)
+        # =====================================================================
+        grad_p_result = Jl_inv_T @ grad_out
+        
+        # =====================================================================
+        # GRAD_X COMPUTATION: More complex, needs derivative of Jl_inv
+        # (Uses shared so3, K, K2, Jl_inv, theta, coef2, dcoef2_dtheta)
+        # =====================================================================
         
         # Skew derivative matrices
         dK0 = wp.matrix(shape=(3, 3), dtype=dtype)
@@ -99,22 +126,18 @@ def _make_compute_jinvp_grad(dtype):
         dJ2 = -dtype(0.5) * dK2 + dcoef2_dso3_2 * K2 + coef2 * (dK2 @ K + K @ dK2)
         grad_so3_2 = wp.dot(grad_out, dJ2 @ p)
         
-        grad_so3 = wp.vector(grad_so3_0, grad_so3_1, grad_so3_2)
+        grad_so3 = vec3_ctor(grad_so3_0, grad_so3_1, grad_so3_2)
         
         # Backprop through Log: grad_X = [Jl_inv^T @ grad_so3, 0]
-        grad_X_xyz = wp.transpose(Jl_inv) @ grad_so3
-        grad_X = wp.quaternion(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
+        # (Uses shared Jl_inv_T)
+        grad_X_xyz = Jl_inv_T @ grad_so3
+        grad_X_result = quat_ctor(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
         
-        return grad_X
+        # Store results
+        wp.store(grad_X_out, 0, grad_X_result)
+        wp.store(grad_p_out, 0, grad_p_result)
     
-    @wp.func
-    def compute_grad_p(q: T.Any, grad_out: T.Any) -> T.Any:
-        """Compute grad_p = Jl_inv^T @ grad_out."""
-        so3 = SO3_log_wp_func(q)
-        Jl_inv = so3_Jl_inv_impl(so3)
-        return wp.transpose(Jl_inv) @ grad_out
-    
-    return compute_grad_X, compute_grad_p
+    return compute_grads_fused
 
 
 # =============================================================================
@@ -122,7 +145,9 @@ def _make_compute_jinvp_grad(dtype):
 # =============================================================================
 
 def _make_kernel_1d(dtype):
-    compute_grad_X, compute_grad_p = _make_compute_jinvp_grad(dtype)
+    compute_grads_fused = _make_compute_jinvp_grads_fused(dtype)
+    quat_type = DTYPE_TO_QUAT[dtype]
+    vec3_type = DTYPE_TO_VEC3[dtype]
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -133,13 +158,109 @@ def _make_kernel_1d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        grad_X[i] = compute_grad_X(X[i], p[i], grad_output[i])
-        grad_p[i] = compute_grad_p(X[i], grad_output[i])
+        # Create temporary storage for outputs
+        grad_X_tmp = wp.array(grad_X.data, dtype=quat_type, ndim=1, shape=1, ptr=wp.address(grad_X, i))
+        grad_p_tmp = wp.array(grad_p.data, dtype=vec3_type, ndim=1, shape=1, ptr=wp.address(grad_p, i))
+        compute_grads_fused(X[i], p[i], grad_output[i], grad_X_tmp, grad_p_tmp)
+    return implement
+
+
+def _make_kernel_1d_inline(dtype):
+    """Inline version that avoids wp.array creation in kernel."""
+    eps_val = get_eps_for_dtype(dtype, power=2)
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    
+    @wp.kernel(enable_backward=False)
+    def implement(
+        X: wp.array(dtype=T.Any, ndim=1),
+        p: wp.array(dtype=T.Any, ndim=1),
+        grad_output: wp.array(dtype=T.Any, ndim=1),
+        grad_X: wp.array(dtype=T.Any, ndim=1),
+        grad_p: wp.array(dtype=T.Any, ndim=1),
+    ):
+        i = wp.tid()
+        q = X[i]
+        pv = p[i]
+        grad_out = grad_output[i]
+        
+        # SHARED COMPUTATION: Log and Jl_inv (computed only once)
+        so3 = SO3_log_wp_func(q)
+        K = wp.skew(so3)
+        I = wp.identity(n=3, dtype=dtype)
+        theta = wp.length(so3)
+        
+        eps = dtype(eps_val)
+        coef2 = dtype(0.0)
+        dcoef2_dtheta = dtype(0.0)
+        
+        if theta > eps:
+            theta_half = dtype(0.5) * theta
+            theta2 = theta * theta
+            sin_half = wp.sin(theta_half)
+            cos_half = wp.cos(theta_half)
+            cot_half = cos_half / sin_half
+            
+            coef2 = (dtype(1.0) - theta * cot_half * dtype(0.5)) / theta2
+            
+            sin2_half = sin_half * sin_half
+            df_dtheta = -cot_half * dtype(0.5) + theta / (dtype(4.0) * sin2_half)
+            f = dtype(1.0) - theta * cot_half * dtype(0.5)
+            dcoef2_dtheta = (df_dtheta * theta2 - f * dtype(2.0) * theta) / (theta2 * theta2)
+        else:
+            coef2 = dtype(1.0) / dtype(12.0)
+            dcoef2_dtheta = dtype(0.0)
+        
+        K2 = K @ K
+        Jl_inv = I - dtype(0.5) * K + coef2 * K2
+        Jl_inv_T = wp.transpose(Jl_inv)
+        
+        # GRAD_P: grad_p = Jl_inv^T @ grad_out
+        grad_p[i] = Jl_inv_T @ grad_out
+        
+        # GRAD_X: needs derivative of Jl_inv
+        dK0 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK0[1, 2] = dtype(-1.0)
+        dK0[2, 1] = dtype(1.0)
+        
+        dK1 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK1[0, 2] = dtype(1.0)
+        dK1[2, 0] = dtype(-1.0)
+        
+        dK2 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK2[0, 1] = dtype(-1.0)
+        dK2[1, 0] = dtype(1.0)
+        
+        dcoef2_dso3_0 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_0 = dcoef2_dtheta * so3[0] / theta
+        dJ0 = -dtype(0.5) * dK0 + dcoef2_dso3_0 * K2 + coef2 * (dK0 @ K + K @ dK0)
+        grad_so3_0 = wp.dot(grad_out, dJ0 @ pv)
+        
+        dcoef2_dso3_1 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_1 = dcoef2_dtheta * so3[1] / theta
+        dJ1 = -dtype(0.5) * dK1 + dcoef2_dso3_1 * K2 + coef2 * (dK1 @ K + K @ dK1)
+        grad_so3_1 = wp.dot(grad_out, dJ1 @ pv)
+        
+        dcoef2_dso3_2 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_2 = dcoef2_dtheta * so3[2] / theta
+        dJ2 = -dtype(0.5) * dK2 + dcoef2_dso3_2 * K2 + coef2 * (dK2 @ K + K @ dK2)
+        grad_so3_2 = wp.dot(grad_out, dJ2 @ pv)
+        
+        grad_so3 = vec3_ctor(grad_so3_0, grad_so3_1, grad_so3_2)
+        grad_X_xyz = Jl_inv_T @ grad_so3
+        grad_X[i] = quat_ctor(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
+    
     return implement
 
 
 def _make_kernel_2d(dtype):
-    compute_grad_X, compute_grad_p = _make_compute_jinvp_grad(dtype)
+    """Fused 2D kernel."""
+    eps_val = get_eps_for_dtype(dtype, power=2)
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -150,13 +271,83 @@ def _make_kernel_2d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        grad_X[i, j] = compute_grad_X(X[i, j], p[i, j], grad_output[i, j])
-        grad_p[i, j] = compute_grad_p(X[i, j], grad_output[i, j])
+        q = X[i, j]
+        pv = p[i, j]
+        grad_out = grad_output[i, j]
+        
+        # SHARED COMPUTATION
+        so3 = SO3_log_wp_func(q)
+        K = wp.skew(so3)
+        I = wp.identity(n=3, dtype=dtype)
+        theta = wp.length(so3)
+        
+        eps = dtype(eps_val)
+        coef2 = dtype(0.0)
+        dcoef2_dtheta = dtype(0.0)
+        
+        if theta > eps:
+            theta_half = dtype(0.5) * theta
+            theta2 = theta * theta
+            sin_half = wp.sin(theta_half)
+            cos_half = wp.cos(theta_half)
+            cot_half = cos_half / sin_half
+            coef2 = (dtype(1.0) - theta * cot_half * dtype(0.5)) / theta2
+            sin2_half = sin_half * sin_half
+            df_dtheta = -cot_half * dtype(0.5) + theta / (dtype(4.0) * sin2_half)
+            f = dtype(1.0) - theta * cot_half * dtype(0.5)
+            dcoef2_dtheta = (df_dtheta * theta2 - f * dtype(2.0) * theta) / (theta2 * theta2)
+        else:
+            coef2 = dtype(1.0) / dtype(12.0)
+            dcoef2_dtheta = dtype(0.0)
+        
+        K2 = K @ K
+        Jl_inv = I - dtype(0.5) * K + coef2 * K2
+        Jl_inv_T = wp.transpose(Jl_inv)
+        
+        # GRAD_P
+        grad_p[i, j] = Jl_inv_T @ grad_out
+        
+        # GRAD_X
+        dK0 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK0[1, 2] = dtype(-1.0)
+        dK0[2, 1] = dtype(1.0)
+        dK1 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK1[0, 2] = dtype(1.0)
+        dK1[2, 0] = dtype(-1.0)
+        dK2 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK2[0, 1] = dtype(-1.0)
+        dK2[1, 0] = dtype(1.0)
+        
+        dcoef2_dso3_0 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_0 = dcoef2_dtheta * so3[0] / theta
+        dJ0 = -dtype(0.5) * dK0 + dcoef2_dso3_0 * K2 + coef2 * (dK0 @ K + K @ dK0)
+        grad_so3_0 = wp.dot(grad_out, dJ0 @ pv)
+        
+        dcoef2_dso3_1 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_1 = dcoef2_dtheta * so3[1] / theta
+        dJ1 = -dtype(0.5) * dK1 + dcoef2_dso3_1 * K2 + coef2 * (dK1 @ K + K @ dK1)
+        grad_so3_1 = wp.dot(grad_out, dJ1 @ pv)
+        
+        dcoef2_dso3_2 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_2 = dcoef2_dtheta * so3[2] / theta
+        dJ2 = -dtype(0.5) * dK2 + dcoef2_dso3_2 * K2 + coef2 * (dK2 @ K + K @ dK2)
+        grad_so3_2 = wp.dot(grad_out, dJ2 @ pv)
+        
+        grad_so3 = vec3_ctor(grad_so3_0, grad_so3_1, grad_so3_2)
+        grad_X_xyz = Jl_inv_T @ grad_so3
+        grad_X[i, j] = quat_ctor(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
+    
     return implement
 
 
 def _make_kernel_3d(dtype):
-    compute_grad_X, compute_grad_p = _make_compute_jinvp_grad(dtype)
+    """Fused 3D kernel."""
+    eps_val = get_eps_for_dtype(dtype, power=2)
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -167,13 +358,83 @@ def _make_kernel_3d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        grad_X[i, j, k] = compute_grad_X(X[i, j, k], p[i, j, k], grad_output[i, j, k])
-        grad_p[i, j, k] = compute_grad_p(X[i, j, k], grad_output[i, j, k])
+        q = X[i, j, k]
+        pv = p[i, j, k]
+        grad_out = grad_output[i, j, k]
+        
+        # SHARED COMPUTATION
+        so3 = SO3_log_wp_func(q)
+        K = wp.skew(so3)
+        I = wp.identity(n=3, dtype=dtype)
+        theta = wp.length(so3)
+        
+        eps = dtype(eps_val)
+        coef2 = dtype(0.0)
+        dcoef2_dtheta = dtype(0.0)
+        
+        if theta > eps:
+            theta_half = dtype(0.5) * theta
+            theta2 = theta * theta
+            sin_half = wp.sin(theta_half)
+            cos_half = wp.cos(theta_half)
+            cot_half = cos_half / sin_half
+            coef2 = (dtype(1.0) - theta * cot_half * dtype(0.5)) / theta2
+            sin2_half = sin_half * sin_half
+            df_dtheta = -cot_half * dtype(0.5) + theta / (dtype(4.0) * sin2_half)
+            f = dtype(1.0) - theta * cot_half * dtype(0.5)
+            dcoef2_dtheta = (df_dtheta * theta2 - f * dtype(2.0) * theta) / (theta2 * theta2)
+        else:
+            coef2 = dtype(1.0) / dtype(12.0)
+            dcoef2_dtheta = dtype(0.0)
+        
+        K2 = K @ K
+        Jl_inv = I - dtype(0.5) * K + coef2 * K2
+        Jl_inv_T = wp.transpose(Jl_inv)
+        
+        # GRAD_P
+        grad_p[i, j, k] = Jl_inv_T @ grad_out
+        
+        # GRAD_X
+        dK0 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK0[1, 2] = dtype(-1.0)
+        dK0[2, 1] = dtype(1.0)
+        dK1 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK1[0, 2] = dtype(1.0)
+        dK1[2, 0] = dtype(-1.0)
+        dK2 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK2[0, 1] = dtype(-1.0)
+        dK2[1, 0] = dtype(1.0)
+        
+        dcoef2_dso3_0 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_0 = dcoef2_dtheta * so3[0] / theta
+        dJ0 = -dtype(0.5) * dK0 + dcoef2_dso3_0 * K2 + coef2 * (dK0 @ K + K @ dK0)
+        grad_so3_0 = wp.dot(grad_out, dJ0 @ pv)
+        
+        dcoef2_dso3_1 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_1 = dcoef2_dtheta * so3[1] / theta
+        dJ1 = -dtype(0.5) * dK1 + dcoef2_dso3_1 * K2 + coef2 * (dK1 @ K + K @ dK1)
+        grad_so3_1 = wp.dot(grad_out, dJ1 @ pv)
+        
+        dcoef2_dso3_2 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_2 = dcoef2_dtheta * so3[2] / theta
+        dJ2 = -dtype(0.5) * dK2 + dcoef2_dso3_2 * K2 + coef2 * (dK2 @ K + K @ dK2)
+        grad_so3_2 = wp.dot(grad_out, dJ2 @ pv)
+        
+        grad_so3 = vec3_ctor(grad_so3_0, grad_so3_1, grad_so3_2)
+        grad_X_xyz = Jl_inv_T @ grad_so3
+        grad_X[i, j, k] = quat_ctor(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
+    
     return implement
 
 
 def _make_kernel_4d(dtype):
-    compute_grad_X, compute_grad_p = _make_compute_jinvp_grad(dtype)
+    """Fused 4D kernel."""
+    eps_val = get_eps_for_dtype(dtype, power=2)
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
     
     @wp.kernel(enable_backward=False)
     def implement(
@@ -184,13 +445,80 @@ def _make_kernel_4d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        grad_X[i, j, k, l] = compute_grad_X(X[i, j, k, l], p[i, j, k, l], grad_output[i, j, k, l])
-        grad_p[i, j, k, l] = compute_grad_p(X[i, j, k, l], grad_output[i, j, k, l])
+        q = X[i, j, k, l]
+        pv = p[i, j, k, l]
+        grad_out = grad_output[i, j, k, l]
+        
+        # SHARED COMPUTATION
+        so3 = SO3_log_wp_func(q)
+        K = wp.skew(so3)
+        I = wp.identity(n=3, dtype=dtype)
+        theta = wp.length(so3)
+        
+        eps = dtype(eps_val)
+        coef2 = dtype(0.0)
+        dcoef2_dtheta = dtype(0.0)
+        
+        if theta > eps:
+            theta_half = dtype(0.5) * theta
+            theta2 = theta * theta
+            sin_half = wp.sin(theta_half)
+            cos_half = wp.cos(theta_half)
+            cot_half = cos_half / sin_half
+            coef2 = (dtype(1.0) - theta * cot_half * dtype(0.5)) / theta2
+            sin2_half = sin_half * sin_half
+            df_dtheta = -cot_half * dtype(0.5) + theta / (dtype(4.0) * sin2_half)
+            f = dtype(1.0) - theta * cot_half * dtype(0.5)
+            dcoef2_dtheta = (df_dtheta * theta2 - f * dtype(2.0) * theta) / (theta2 * theta2)
+        else:
+            coef2 = dtype(1.0) / dtype(12.0)
+            dcoef2_dtheta = dtype(0.0)
+        
+        K2 = K @ K
+        Jl_inv = I - dtype(0.5) * K + coef2 * K2
+        Jl_inv_T = wp.transpose(Jl_inv)
+        
+        # GRAD_P
+        grad_p[i, j, k, l] = Jl_inv_T @ grad_out
+        
+        # GRAD_X
+        dK0 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK0[1, 2] = dtype(-1.0)
+        dK0[2, 1] = dtype(1.0)
+        dK1 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK1[0, 2] = dtype(1.0)
+        dK1[2, 0] = dtype(-1.0)
+        dK2 = wp.matrix(shape=(3, 3), dtype=dtype)
+        dK2[0, 1] = dtype(-1.0)
+        dK2[1, 0] = dtype(1.0)
+        
+        dcoef2_dso3_0 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_0 = dcoef2_dtheta * so3[0] / theta
+        dJ0 = -dtype(0.5) * dK0 + dcoef2_dso3_0 * K2 + coef2 * (dK0 @ K + K @ dK0)
+        grad_so3_0 = wp.dot(grad_out, dJ0 @ pv)
+        
+        dcoef2_dso3_1 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_1 = dcoef2_dtheta * so3[1] / theta
+        dJ1 = -dtype(0.5) * dK1 + dcoef2_dso3_1 * K2 + coef2 * (dK1 @ K + K @ dK1)
+        grad_so3_1 = wp.dot(grad_out, dJ1 @ pv)
+        
+        dcoef2_dso3_2 = dtype(0.0)
+        if theta > eps:
+            dcoef2_dso3_2 = dcoef2_dtheta * so3[2] / theta
+        dJ2 = -dtype(0.5) * dK2 + dcoef2_dso3_2 * K2 + coef2 * (dK2 @ K + K @ dK2)
+        grad_so3_2 = wp.dot(grad_out, dJ2 @ pv)
+        
+        grad_so3 = vec3_ctor(grad_so3_0, grad_so3_1, grad_so3_2)
+        grad_X_xyz = Jl_inv_T @ grad_so3
+        grad_X[i, j, k, l] = quat_ctor(grad_X_xyz[0], grad_X_xyz[1], grad_X_xyz[2], dtype(0.0))
+    
     return implement
 
 
 _kernel_factories = {
-    1: _make_kernel_1d,
+    1: _make_kernel_1d_inline,
     2: _make_kernel_2d,
     3: _make_kernel_3d,
     4: _make_kernel_4d,

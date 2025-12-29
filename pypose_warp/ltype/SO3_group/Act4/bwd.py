@@ -37,6 +37,9 @@ def _make_extract_vec3(dtype):
 #   X_grad_xyz = out[:3] × grad[:3]
 #   p_grad[:3] = R^T @ grad[:3]
 #   p_grad[3] = grad[3]
+#
+# OPTIMIZATION: Uses wp.quat_rotate_inv(q, g3) instead of transpose(quat_to_matrix(q)) @ g3.
+# This is mathematically equivalent but more efficient.
 # =============================================================================
 
 def _make_kernel_1d(dtype):
@@ -52,7 +55,7 @@ def _make_kernel_1d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        R = wp.quat_to_matrix(X[i])
+        q = X[i]
         o = out[i]
         g = grad_output[i]
         
@@ -62,7 +65,7 @@ def _make_kernel_1d(dtype):
         gx = wp.cross(o3, g3)
         grad_X[i] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
         
-        pg3 = wp.transpose(R) @ g3
+        pg3 = wp.quat_rotate_inv(q, g3)
         grad_p[i] = vec4_ctor(pg3[0], pg3[1], pg3[2], g[3])
     return implement
 
@@ -80,7 +83,7 @@ def _make_kernel_2d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j])
+        q = X[i, j]
         o = out[i, j]
         g = grad_output[i, j]
         
@@ -90,7 +93,7 @@ def _make_kernel_2d(dtype):
         gx = wp.cross(o3, g3)
         grad_X[i, j] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
         
-        pg3 = wp.transpose(R) @ g3
+        pg3 = wp.quat_rotate_inv(q, g3)
         grad_p[i, j] = vec4_ctor(pg3[0], pg3[1], pg3[2], g[3])
     return implement
 
@@ -108,7 +111,7 @@ def _make_kernel_3d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k])
+        q = X[i, j, k]
         o = out[i, j, k]
         g = grad_output[i, j, k]
         
@@ -118,7 +121,7 @@ def _make_kernel_3d(dtype):
         gx = wp.cross(o3, g3)
         grad_X[i, j, k] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
         
-        pg3 = wp.transpose(R) @ g3
+        pg3 = wp.quat_rotate_inv(q, g3)
         grad_p[i, j, k] = vec4_ctor(pg3[0], pg3[1], pg3[2], g[3])
     return implement
 
@@ -136,7 +139,7 @@ def _make_kernel_4d(dtype):
         grad_p: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k, l])
+        q = X[i, j, k, l]
         o = out[i, j, k, l]
         g = grad_output[i, j, k, l]
         
@@ -146,7 +149,7 @@ def _make_kernel_4d(dtype):
         gx = wp.cross(o3, g3)
         grad_X[i, j, k, l] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
         
-        pg3 = wp.transpose(R) @ g3
+        pg3 = wp.quat_rotate_inv(q, g3)
         grad_p[i, j, k, l] = vec4_ctor(pg3[0], pg3[1], pg3[2], g[3])
     return implement
 

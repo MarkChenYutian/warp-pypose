@@ -25,6 +25,8 @@ from ...common.kernel_utils import (
 # In PyPose these are row vector @ matrix. In Warp with column vectors:
 #   X_grad_xyz = -grad_output @ skew(out) = -out × grad_output (cross product)
 #   a_grad = grad_output @ R = R^T @ grad_output (for rotation back)
+#
+# OPTIMIZATION: Uses wp.quat_rotate_inv(q, v) instead of transpose(quat_to_matrix(q)) @ v.
 # =============================================================================
 
 def _make_kernel_1d(dtype):
@@ -37,11 +39,10 @@ def _make_kernel_1d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        R = wp.quat_to_matrix(X[i])
         g = grad_output[i]
         o = out[i]
         
-        grad_a[i] = wp.transpose(R) @ g
+        grad_a[i] = wp.quat_rotate_inv(X[i], g)
         gx = wp.cross(o, g)
         grad_X[i] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
     return implement
@@ -57,11 +58,10 @@ def _make_kernel_2d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j])
         g = grad_output[i, j]
         o = out[i, j]
         
-        grad_a[i, j] = wp.transpose(R) @ g
+        grad_a[i, j] = wp.quat_rotate_inv(X[i, j], g)
         gx = wp.cross(o, g)
         grad_X[i, j] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
     return implement
@@ -77,11 +77,10 @@ def _make_kernel_3d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k])
         g = grad_output[i, j, k]
         o = out[i, j, k]
         
-        grad_a[i, j, k] = wp.transpose(R) @ g
+        grad_a[i, j, k] = wp.quat_rotate_inv(X[i, j, k], g)
         gx = wp.cross(o, g)
         grad_X[i, j, k] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
     return implement
@@ -97,11 +96,10 @@ def _make_kernel_4d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k, l])
         g = grad_output[i, j, k, l]
         o = out[i, j, k, l]
         
-        grad_a[i, j, k, l] = wp.transpose(R) @ g
+        grad_a[i, j, k, l] = wp.quat_rotate_inv(X[i, j, k, l], g)
         gx = wp.cross(o, g)
         grad_X[i, j, k, l] = wp.quaternion(gx[0], gx[1], gx[2], dtype(0.0))
     return implement

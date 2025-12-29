@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Exp
+from . import Exp, Mat
 
 
 # ============================================================================
@@ -82,6 +82,12 @@ OPERATORS = [
         name="Exp",
         bench_forward=Exp.bench_forward,
         bench_backward=Exp.bench_backward,
+        has_kind=False,
+    ),
+    OperatorInfo(
+        name="Mat",
+        bench_forward=Mat.bench_forward,
+        bench_backward=Mat.bench_backward,
         has_kind=False,
     ),
 ]

@@ -27,6 +27,9 @@ from ...common.kernel_utils import (
 #   X_grad[:3] = grad_output @ skew(-out)  (Jacobian w.r.t. Lie algebra)
 #   X_grad[3] = 0  (w component has zero gradient)
 #   p_grad = grad_output @ R  (where R = rotation matrix from X)
+#
+# OPTIMIZATION: Uses wp.quat_rotate_inv(q, g) instead of transpose(quat_to_matrix(q)) @ g.
+# This is mathematically equivalent but more efficient.
 # =============================================================================
 
 def _make_compute_grad_X(dtype):
@@ -53,8 +56,7 @@ def _make_kernel_1d(dtype):
         q = X[i]
         o = out[i]
         g = grad_output[i]
-        R = wp.quat_to_matrix(q)
-        grad_p[i] = wp.transpose(R) @ g
+        grad_p[i] = wp.quat_rotate_inv(q, g)
         grad_X[i] = compute_grad_X(o, g)
     return implement
 
@@ -74,8 +76,7 @@ def _make_kernel_2d(dtype):
         q = X[i, j]
         o = out[i, j]
         g = grad_output[i, j]
-        R = wp.quat_to_matrix(q)
-        grad_p[i, j] = wp.transpose(R) @ g
+        grad_p[i, j] = wp.quat_rotate_inv(q, g)
         grad_X[i, j] = compute_grad_X(o, g)
     return implement
 
@@ -95,8 +96,7 @@ def _make_kernel_3d(dtype):
         q = X[i, j, k]
         o = out[i, j, k]
         g = grad_output[i, j, k]
-        R = wp.quat_to_matrix(q)
-        grad_p[i, j, k] = wp.transpose(R) @ g
+        grad_p[i, j, k] = wp.quat_rotate_inv(q, g)
         grad_X[i, j, k] = compute_grad_X(o, g)
     return implement
 
@@ -116,8 +116,7 @@ def _make_kernel_4d(dtype):
         q = X[i, j, k, l]
         o = out[i, j, k, l]
         g = grad_output[i, j, k, l]
-        R = wp.quat_to_matrix(q)
-        grad_p[i, j, k, l] = wp.transpose(R) @ g
+        grad_p[i, j, k, l] = wp.quat_rotate_inv(q, g)
         grad_X[i, j, k, l] = compute_grad_X(o, g)
     return implement
 

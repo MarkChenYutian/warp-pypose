@@ -20,6 +20,10 @@ class warp_SO3Type(SO3Type):
     def Act(self, X: pp.LieTensor, p: torch.Tensor):
         assert not self.on_manifold and isinstance(p, torch.Tensor)
         assert p.shape[-1]==3 or p.shape[-1]==4, "Invalid Tensor Dimension"
+        # Use PyPose native on CUDA (lower overhead for trivial ops like quat_rotate)
+        # Use Warp on CPU (benefits from parallelization at large batch sizes)
+        if X.device.type == "cuda":
+            return super().Act(X, p)
         out: torch.Tensor
         if p.shape[-1]==3:
             out = SO3_Act.apply(X, p)

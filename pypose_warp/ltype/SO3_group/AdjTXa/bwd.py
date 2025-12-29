@@ -27,6 +27,8 @@ from ...common.kernel_utils import (
 #   X_grad_xyz = -a @ skew(a_grad) in row form
 #              = -skew(a_grad)^T @ a in column form
 #              = skew(a_grad) @ a = a_grad × a
+#
+# OPTIMIZATION: Uses wp.quat_rotate(q, v) instead of quat_to_matrix(q) @ v.
 # =============================================================================
 
 def _make_kernel_1d(dtype):
@@ -39,11 +41,10 @@ def _make_kernel_1d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=1),
     ):
         i = wp.tid()
-        R = wp.quat_to_matrix(X[i])
         g = grad_output[i]
         av = a[i]
         
-        a_grad_vec = R @ g
+        a_grad_vec = wp.quat_rotate(X[i], g)
         grad_a[i] = a_grad_vec
         
         gx = wp.cross(a_grad_vec, av)
@@ -61,11 +62,10 @@ def _make_kernel_2d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=2),
     ):
         i, j = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j])
         g = grad_output[i, j]
         av = a[i, j]
         
-        a_grad_vec = R @ g
+        a_grad_vec = wp.quat_rotate(X[i, j], g)
         grad_a[i, j] = a_grad_vec
         
         gx = wp.cross(a_grad_vec, av)
@@ -83,11 +83,10 @@ def _make_kernel_3d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=3),
     ):
         i, j, k = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k])
         g = grad_output[i, j, k]
         av = a[i, j, k]
         
-        a_grad_vec = R @ g
+        a_grad_vec = wp.quat_rotate(X[i, j, k], g)
         grad_a[i, j, k] = a_grad_vec
         
         gx = wp.cross(a_grad_vec, av)
@@ -105,11 +104,10 @@ def _make_kernel_4d(dtype):
         grad_a: wp.array(dtype=T.Any, ndim=4),
     ):
         i, j, k, l = wp.tid()  # type: ignore
-        R = wp.quat_to_matrix(X[i, j, k, l])
         g = grad_output[i, j, k, l]
         av = a[i, j, k, l]
         
-        a_grad_vec = R @ g
+        a_grad_vec = wp.quat_rotate(X[i, j, k, l], g)
         grad_a[i, j, k, l] = a_grad_vec
         
         gx = wp.cross(a_grad_vec, av)
