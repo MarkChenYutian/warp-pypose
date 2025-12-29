@@ -13,6 +13,8 @@
   <a href="#development">Development</a>
 </p>
 
+<img width="3147" height="1049" alt="Log" src="https://github.com/user-attachments/assets/877c3beb-3562-4538-a10c-876661a53c6a" />
+
 ---
 
 **warp-pypose** provides a high-performance [NVIDIA Warp](https://github.com/NVIDIA/warp)-based backend for [PyPose](https://github.com/pypose/pypose) LieTensor operations. It offers significant speedups for Lie group computations on both CPU and CUDA, with full support for automatic differentiation.
