@@ -13,7 +13,7 @@
   <a href="#development">Development</a>
 </p>
 
-<img width="3147" height="1049" alt="Log" src="https://github.com/user-attachments/assets/877c3beb-3562-4538-a10c-876661a53c6a" />
+<img width="3147" height="1049" alt="Log" src="https://github.com/user-attachments/assets/0ed05c38-d151-4502-aa17-b031b6bfab12" />
 
 ---
 
