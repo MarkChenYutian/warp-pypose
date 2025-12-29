@@ -8,6 +8,8 @@ This module provides:
 - Common batch handling utilities
 """
 
+from dataclasses import dataclass
+
 import torch
 import warp as wp
 import typing as T
@@ -58,6 +60,75 @@ DTYPE_TO_TRANSFORM: dict[type, type] = {
     wp.float32: wp.transformf,
     wp.float64: wp.transformd,
 }
+
+DTYPE_TO_VEC6: dict[type, type] = {
+    wp.float16: wp.types.vector(6, wp.float16),
+    wp.float32: wp.types.vector(6, wp.float32),
+    wp.float64: wp.types.vector(6, wp.float64),
+}
+
+DTYPE_TO_MAT44: dict[type, type] = {
+    wp.float16: wp.mat44h,
+    wp.float32: wp.mat44f,
+    wp.float64: wp.mat44d,
+}
+
+
+# =============================================================================
+# Convenience Functions - PyTorch dtype to Warp type
+# =============================================================================
+
+def wp_type_from_torch(dtype: torch.dtype, type_map: dict) -> type:
+    """
+    Convert PyTorch dtype to Warp type using given mapping.
+    
+    Args:
+        dtype: PyTorch dtype (torch.float16, torch.float32, torch.float64)
+        type_map: One of the DTYPE_TO_* mapping dictionaries
+        
+    Returns:
+        Corresponding Warp type
+        
+    Example:
+        vec3_type = wp_type_from_torch(torch.float32, DTYPE_TO_VEC3)  # returns wp.vec3f
+    """
+    wp_scalar = TORCH_TO_WP_SCALAR[dtype]
+    return type_map[wp_scalar]
+
+
+def wp_vec3(dtype: torch.dtype) -> type:
+    """Get Warp vec3 type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_VEC3)
+
+
+def wp_vec4(dtype: torch.dtype) -> type:
+    """Get Warp vec4 type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_VEC4)
+
+
+def wp_vec6(dtype: torch.dtype) -> type:
+    """Get Warp vec6 type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_VEC6)
+
+
+def wp_quat(dtype: torch.dtype) -> type:
+    """Get Warp quaternion type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_QUAT)
+
+
+def wp_mat33(dtype: torch.dtype) -> type:
+    """Get Warp mat33 type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_MAT33)
+
+
+def wp_mat44(dtype: torch.dtype) -> type:
+    """Get Warp mat44 type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_MAT44)
+
+
+def wp_transform(dtype: torch.dtype) -> type:
+    """Get Warp transform type for the given PyTorch dtype."""
+    return wp_type_from_torch(dtype, DTYPE_TO_TRANSFORM)
 
 
 # =============================================================================
@@ -184,14 +255,12 @@ class KernelRegistry:
 # Batch Handling Utilities
 # =============================================================================
 
+@dataclass(slots=True)
 class BatchInfo:
     """Container for batch dimension information."""
-    __slots__ = ('shape', 'ndim', 'squeeze_output')
-    
-    def __init__(self, shape: tuple, ndim: int, squeeze_output: bool):
-        self.shape = shape
-        self.ndim = ndim
-        self.squeeze_output = squeeze_output
+    shape: tuple
+    ndim: int
+    squeeze_output: bool
 
 
 def prepare_batch_single(

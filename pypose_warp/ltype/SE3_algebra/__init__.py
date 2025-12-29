@@ -1,8 +1,6 @@
 import torch
 import pypose as pp
-from torch import Tensor
-from numbers import Number
-from pypose.lietensor.lietensor import se3Type, LieTensor
+from pypose.lietensor.lietensor import se3Type
 
 from .Exp import se3_Exp, se3_Exp_fwd, se3_Exp_bwd
 from .Mat import se3_Mat, se3_Mat_fwd, se3_Mat_bwd

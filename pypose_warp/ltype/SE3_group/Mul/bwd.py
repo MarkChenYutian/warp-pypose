@@ -5,7 +5,13 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_transform_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_QUAT,
+    DTYPE_TO_TRANSFORM,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -39,29 +45,6 @@ from ....utils.warp_utils import wp_transform_type
 # =============================================================================
 
 
-# =============================================================================
-# Type-specific constructor mappings
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_QUAT_CTOR = {
-    wp.float16: wp.quath,
-    wp.float32: wp.quatf,
-    wp.float64: wp.quatd,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
-
-
 def _make_mul_grad_funcs(dtype):
     """
     Factory function to create dtype-specific gradient computation functions.
@@ -72,9 +55,9 @@ def _make_mul_grad_funcs(dtype):
     Returns:
         Tuple of (compute_grad_X, compute_grad_Y) warp functions
     """
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     @wp.func
     def compute_grad_X(grad: T.Any) -> T.Any:
@@ -223,10 +206,6 @@ def _get_kernel(ndim: int, dtype):
     return _kernel_cache[key]
 
 
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-
-
 # =============================================================================
 # Main backward function
 # =============================================================================
@@ -263,7 +242,7 @@ def SE3_Mul_bwd(
     
     dtype = X.dtype
     device = X.device
-    transform_type = wp_transform_type(dtype)
+    transform_type = wp_transform(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous for warp conversion

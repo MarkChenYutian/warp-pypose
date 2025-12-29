@@ -22,31 +22,17 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_transform_type
 from ...common.warp_functions import so3_Jl, so3_exp_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_TRANSFORM,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec6,
+    wp_transform,
 )
-
-
-# =============================================================================
-# Dtype-specific vector constructors
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
 
 
 # =============================================================================
@@ -57,8 +43,8 @@ def _make_add_exp_func(dtype):
     """Create fused Exp + Mul function for the given dtype."""
     so3_Jl_impl = so3_Jl(dtype)
     so3_exp_impl = so3_exp_wp_func(dtype)
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     @wp.func
     def add_exp_func(delta: T.Any, X: T.Any) -> T.Any:
@@ -167,18 +153,6 @@ _kernel_factories = {
 
 
 # =============================================================================
-# Warp type for 6D vector
-# =============================================================================
-
-def _wp_vec6_type(dtype: torch.dtype):
-    match dtype:
-        case torch.float64: return wp.types.vector(6, wp.float64)
-        case torch.float32: return wp.types.vector(6, wp.float32)
-        case torch.float16: return wp.types.vector(6, wp.float16)
-        case _: raise NotImplementedError()
-
-
-# =============================================================================
 # Main forward function
 # =============================================================================
 
@@ -215,8 +189,8 @@ def SE3_AddExp_fwd(delta: torch.Tensor, X: pp.LieTensor) -> pp.LieTensor:
     
     # Get warp types based on dtype
     dtype = delta_tensor.dtype
-    vec6_type = _wp_vec6_type(dtype)
-    transform_type = wp_transform_type(dtype)
+    vec6_type = wp_vec6(dtype)
+    transform_type = wp_transform(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

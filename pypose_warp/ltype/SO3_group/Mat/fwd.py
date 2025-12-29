@@ -6,11 +6,12 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_quat_type, wp_mat33_type
 from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_quat,
+    wp_mat33,
 )
 
 
@@ -96,8 +97,8 @@ def SO3_Mat_fwd(X: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    quat_type = wp_quat_type(dtype)
-    mat33_type = wp_mat33_type(dtype)
+    quat_type = wp_quat(dtype)
+    mat33_type = wp_mat33(dtype)
     
     # Convert to warp array
     X_wp = wp.from_torch(X_tensor.contiguous(), dtype=quat_type)

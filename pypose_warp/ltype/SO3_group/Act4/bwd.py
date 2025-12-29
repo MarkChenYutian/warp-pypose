@@ -5,7 +5,6 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_quat_type, wp_vec4_type
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     DTYPE_TO_VEC3,
@@ -13,6 +12,8 @@ from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec4,
+    wp_quat,
 )
 
 
@@ -190,8 +191,8 @@ def SO3_Act4_bwd(
     dtype = X.dtype
     device = X.device
     
-    quat_type = wp_quat_type(dtype)
-    vec4_type = wp_vec4_type(dtype)
+    quat_type = wp_quat(dtype)
+    vec4_type = wp_vec4(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous

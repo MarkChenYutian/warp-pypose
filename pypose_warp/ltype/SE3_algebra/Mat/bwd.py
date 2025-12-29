@@ -22,25 +22,16 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_mat44_type, wp_vec6_type
 from ...common.warp_functions import so3_Jl, so3_exp_wp_func, se3_Jl_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec6,
+    wp_mat44,
 )
-
-
-# =============================================================================
-# Dtype-specific vector constructors
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
 
 
 # =============================================================================
@@ -52,7 +43,7 @@ def _make_compute_se3_mat_grad(dtype):
     so3_Jl_impl = so3_Jl(dtype)
     so3_exp_impl = so3_exp_wp_func(dtype)
     se3_Jl_impl = se3_Jl_wp_func(dtype)
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
     
     @wp.func
     def compute_se3_mat_grad(x: T.Any, G: T.Any) -> T.Any:
@@ -228,8 +219,8 @@ def se3_Mat_bwd(
     
     dtype = x.dtype
     device = x.device
-    vec6_type = wp_vec6_type(dtype)
-    mat44_type = wp_mat44_type(dtype)
+    vec6_type = wp_vec6(dtype)
+    mat44_type = wp_mat44(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous

@@ -21,31 +21,16 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_transform_type
 from ...common.warp_functions import SO3_log_wp_func, so3_Jl_inv
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec6,
+    wp_transform,
 )
-
-
-# =============================================================================
-# Dtype-specific vector constructors
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_VEC6_CTOR = {
-    wp.float16: wp.types.vector(6, wp.float16),
-    wp.float32: wp.types.vector(6, wp.float32),
-    wp.float64: wp.types.vector(6, wp.float64),
-}
 
 
 # =============================================================================
@@ -55,7 +40,7 @@ _DTYPE_TO_VEC6_CTOR = {
 def _make_se3_log(dtype):
     """Create SE3 Log forward function for the given dtype."""
     so3_Jl_inv_impl = so3_Jl_inv(dtype)
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
     
     @wp.func
     def se3_log(X: T.Any) -> T.Any:
@@ -152,18 +137,6 @@ _kernel_factories = {
 
 
 # =============================================================================
-# Warp type for 6D vector
-# =============================================================================
-
-def _wp_vec6_type(dtype: torch.dtype):
-    match dtype:
-        case torch.float64: return wp.types.vector(6, wp.float64)
-        case torch.float32: return wp.types.vector(6, wp.float32)
-        case torch.float16: return wp.types.vector(6, wp.float16)
-        case _: raise NotImplementedError()
-
-
-# =============================================================================
 # Main forward function
 # =============================================================================
 
@@ -186,8 +159,8 @@ def SE3_Log_fwd(X: pp.LieTensor) -> pp.LieTensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
-    vec6_type = _wp_vec6_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec6_type = wp_vec6(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp array

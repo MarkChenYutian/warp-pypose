@@ -17,13 +17,14 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_transform_type
 from ...common.warp_functions import se3_Jl_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec6,
+    wp_transform,
 )
 
 
@@ -135,18 +136,6 @@ _kernel_factories = {
 
 
 # =============================================================================
-# Warp type for 6D vector
-# =============================================================================
-
-def _wp_vec6_type(dtype: torch.dtype):
-    match dtype:
-        case torch.float64: return wp.types.vector(6, wp.float64)
-        case torch.float32: return wp.types.vector(6, wp.float32)
-        case torch.float16: return wp.types.vector(6, wp.float16)
-        case _: raise NotImplementedError()
-
-
-# =============================================================================
 # Main backward function
 # =============================================================================
 
@@ -173,8 +162,8 @@ def se3_Exp_bwd(
     dtype = input.dtype
     device = input.device
     
-    vec6_type = _wp_vec6_type(dtype)
-    transform_type = wp_transform_type(dtype)
+    vec6_type = wp_vec6(dtype)
+    transform_type = wp_transform(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous

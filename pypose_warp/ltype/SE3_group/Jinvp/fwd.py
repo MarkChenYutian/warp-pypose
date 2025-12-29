@@ -6,8 +6,14 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_transform_type, wp_vec3_type
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR, get_eps_for_dtype
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_MAT33,
+    get_eps_for_dtype,
+    wp_vec3,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -33,19 +39,6 @@ from ...common.kernel_utils import TORCH_TO_WP_SCALAR, get_eps_for_dtype
 # =============================================================================
 
 
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_MAT33_CTOR = {
-    wp.float16: wp.mat33h,
-    wp.float32: wp.mat33f,
-    wp.float64: wp.mat33d,
-}
-
-
 def _make_se3_jinvp(dtype):
     """
     Factory function to create dtype-specific SE3_Jinvp function.
@@ -56,8 +49,8 @@ def _make_se3_jinvp(dtype):
     Returns:
         se3_jinvp warp function
     """
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    mat33_ctor = _DTYPE_TO_MAT33_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    mat33_ctor = DTYPE_TO_MAT33[dtype]
     
     # Get dtype-specific epsilon thresholds
     # so3_Jl_inv divides by theta^2
@@ -342,8 +335,8 @@ def SE3_Jinvp_fwd(X: pp.LieTensor, p: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec3_type = wp_vec3(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

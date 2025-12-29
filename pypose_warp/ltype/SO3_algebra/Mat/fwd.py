@@ -6,13 +6,14 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_vec3_type, wp_mat33_type
 from ...common.warp_functions import so3_exp_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec3,
+    wp_mat33,
 )
 
 
@@ -123,8 +124,8 @@ def so3_Mat_fwd(x: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = x_tensor.dtype
-    vec3_type = wp_vec3_type(dtype)
-    mat33_type = wp_mat33_type(dtype)
+    vec3_type = wp_vec3(dtype)
+    mat33_type = wp_mat33(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp array

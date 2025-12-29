@@ -6,12 +6,13 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_quat_type, wp_vec3_type
 from ...common.warp_functions import SO3_log_wp_func
 from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec3,
+    wp_quat,
 )
 
 
@@ -94,8 +95,8 @@ def SO3_Log_fwd(X: pp.LieTensor) -> pp.LieTensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    quat_type = wp_quat_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    quat_type = wp_quat(dtype)
+    vec3_type = wp_vec3(dtype)
     
     # Convert to warp array
     X_wp = wp.from_torch(X_tensor, dtype=quat_type)

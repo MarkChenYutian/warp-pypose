@@ -6,7 +6,13 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_vec3_type, wp_vec4_type, wp_transform_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_VEC4,
+    wp_vec4,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -25,23 +31,6 @@ from ....utils.warp_utils import wp_vec3_type, wp_vec4_type, wp_transform_type
 # =============================================================================
 
 
-# =============================================================================
-# Type-specific helper functions
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_VEC4_CTOR = {
-    wp.float16: wp.vec4h,
-    wp.float32: wp.vec4f,
-    wp.float64: wp.vec4d,
-}
-
-
 def _make_se3_act4_point(dtype):
     """
     Factory function to create dtype-specific SE3_Act4 function.
@@ -52,8 +41,8 @@ def _make_se3_act4_point(dtype):
     Returns:
         se3_act4_point warp function
     """
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    vec4_ctor = _DTYPE_TO_VEC4_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    vec4_ctor = DTYPE_TO_VEC4[dtype]
     
     @wp.func
     def se3_act4_point(X: T.Any, p: T.Any) -> T.Any:
@@ -160,10 +149,6 @@ def _get_kernel(ndim: int, dtype):
     return _kernel_cache[key]
 
 
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-
-
 # =============================================================================
 # Main forward function
 # =============================================================================
@@ -221,8 +206,8 @@ def SE3_Act4_fwd(X: pp.LieTensor, p: torch.Tensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
-    vec4_type = wp_vec4_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec4_type = wp_vec4(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

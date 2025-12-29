@@ -5,8 +5,15 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_transform_type, wp_vec3_type
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR, get_eps_for_dtype
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_QUAT,
+    DTYPE_TO_TRANSFORM,
+    get_eps_for_dtype,
+    wp_vec3,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -35,32 +42,13 @@ from ...common.kernel_utils import TORCH_TO_WP_SCALAR, get_eps_for_dtype
 # =============================================================================
 
 
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_QUAT_CTOR = {
-    wp.float16: wp.quath,
-    wp.float32: wp.quatf,
-    wp.float64: wp.quatd,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
-
-
 def _make_se3_jinvp_grad(dtype):
     """
     Factory function to create dtype-specific SE3_Jinvp gradient functions.
     """
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     # Get dtype-specific epsilon thresholds
     eps_power2 = get_eps_for_dtype(dtype, power=2)
@@ -390,8 +378,8 @@ def SE3_Jinvp_bwd(
     
     dtype = X.dtype
     device = X.device
-    transform_type = wp_transform_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec3_type = wp_vec3(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous

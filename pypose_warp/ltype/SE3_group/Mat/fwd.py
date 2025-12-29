@@ -21,11 +21,14 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_quat_type, wp_mat44_type, wp_transform_type
 from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_quat,
+    wp_mat44,
+    wp_transform,
 )
 
 
@@ -174,8 +177,8 @@ def SE3_Mat_fwd(X: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
-    mat44_type = wp_mat44_type(dtype)
+    transform_type = wp_transform(dtype)
+    mat44_type = wp_mat44(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # PyPose SE3: [tx, ty, tz, qx, qy, qz, qw]

@@ -5,13 +5,14 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_quat_type, wp_vec3_type
 from ...common.warp_functions import so3_Jl_inv
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec3,
+    wp_quat,
 )
 
 
@@ -122,8 +123,8 @@ def SO3_Log_bwd(
     dtype = out_tensor.dtype
     device = out_tensor.device
     
-    vec3_type = wp_vec3_type(dtype)
-    quat_type = wp_quat_type(dtype)
+    vec3_type = wp_vec3(dtype)
+    quat_type = wp_quat(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous

@@ -5,8 +5,15 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_vec3_type, wp_mat33_type, wp_quat_type
 from ...common.warp_functions import so3_exp_wp_func, so3_Jl
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    KernelRegistry,
+    prepare_batch_single,
+    finalize_output,
+    wp_vec3,
+    wp_mat33,
+)
 
 
 # =============================================================================
@@ -136,23 +143,6 @@ _so3_Mat_bwd_kernel_factories = {
     4: so3_Mat_bwd_kernel_4d,
 }
 
-# Cache for instantiated kernels: (ndim, dtype) -> kernel
-_kernel_cache: dict[tuple[int, type], T.Any] = {}
-
-
-def _get_kernel(ndim: int, dtype):
-    """Get or create a kernel for the given ndim and warp scalar dtype."""
-    key = (ndim, dtype)
-    if key not in _kernel_cache:
-        factory = _so3_Mat_bwd_kernel_factories[ndim]
-        _kernel_cache[key] = factory(dtype)
-    return _kernel_cache[key]
-
-
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-
-
 # =============================================================================
 # Main backward function
 # =============================================================================
@@ -174,26 +164,17 @@ def so3_Mat_bwd(
     Returns:
         Gradient w.r.t input axis-angle of shape (..., 3)
     """
-    batch_shape = x.shape[:-1]
-    ndim = len(batch_shape)
+    # Prepare batch dimensions
+    x, batch_info = prepare_batch_single(x)
     
-    if ndim == 0:
-        x = x.unsqueeze(0)
+    if batch_info.squeeze_output:
         grad_output = grad_output.unsqueeze(0)
-        batch_shape = (1,)
-        ndim = 1
-        squeeze_output = True
-    else:
-        squeeze_output = False
-    
-    if ndim > 4:
-        raise NotImplementedError(f"Batch dimensions > 4 not supported. Got shape {batch_shape}")
     
     dtype = x.dtype
     device = x.device
     
-    vec3_type = wp_vec3_type(dtype)
-    mat33_type = wp_mat33_type(dtype)
+    vec3_type = wp_vec3(dtype)
+    mat33_type = wp_mat33(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous
@@ -203,19 +184,16 @@ def so3_Mat_bwd(
     x_wp = wp.from_torch(x, dtype=vec3_type)
     grad_output_wp = wp.from_torch(grad_output, dtype=mat33_type)
     
-    grad_x_tensor = torch.empty((*batch_shape, 3), dtype=dtype, device=device)
+    grad_x_tensor = torch.empty((*batch_info.shape, 3), dtype=dtype, device=device)
     grad_x_wp = wp.from_torch(grad_x_tensor, dtype=vec3_type)
     
-    kernel = _get_kernel(ndim, wp_scalar)
+    kernel = KernelRegistry.get(_so3_Mat_bwd_kernel_factories, batch_info.ndim, wp_scalar)
     wp.launch(
         kernel=kernel,
-        dim=batch_shape,
+        dim=batch_info.shape,
         device=x_wp.device,
         inputs=[x_wp, grad_output_wp, grad_x_wp],
     )
     
-    if squeeze_output:
-        grad_x_tensor = grad_x_tensor.squeeze(0)
-    
-    return grad_x_tensor
+    return finalize_output(grad_x_tensor, batch_info)
 

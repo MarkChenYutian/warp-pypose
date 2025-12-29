@@ -6,13 +6,15 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_quat_type, wp_vec4_type
 from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
     DTYPE_TO_VEC3,
     DTYPE_TO_VEC4,
     KernelRegistry,
     prepare_batch_broadcast,
     finalize_output,
+    wp_vec4,
+    wp_quat,
 )
 
 
@@ -140,9 +142,7 @@ def SO3_Act4_fwd(X: pp.LieTensor, p: torch.Tensor) -> torch.Tensor:
         
     Returns:
         Tensor of shape (broadcast(...), 4) - rotated 4D points
-    """
-    from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-    
+    """    
     X_tensor = X.tensor()
     
     # Prepare batch dimensions with broadcasting
@@ -154,8 +154,8 @@ def SO3_Act4_fwd(X: pp.LieTensor, p: torch.Tensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    quat_type = wp_quat_type(dtype)
-    vec4_type = wp_vec4_type(dtype)
+    quat_type = wp_quat(dtype)
+    vec4_type = wp_vec4(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

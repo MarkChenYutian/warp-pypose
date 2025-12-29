@@ -17,37 +17,18 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_transform_type
 from ...common.warp_functions import se3_Jl_inv_wp_func
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
+    DTYPE_TO_VEC3,
+    DTYPE_TO_QUAT,
+    DTYPE_TO_TRANSFORM,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec6,
+    wp_transform,
 )
-
-
-# =============================================================================
-# Dtype-specific constructors
-# =============================================================================
-
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_QUAT_CTOR = {
-    wp.float16: wp.quath,
-    wp.float32: wp.quatf,
-    wp.float64: wp.quatd,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
 
 
 # =============================================================================
@@ -57,9 +38,9 @@ _DTYPE_TO_TRANSFORM_CTOR = {
 def _make_compute_se3_log_grad(dtype):
     """Create SE3 Log backward gradient function for the given dtype."""
     se3_Jl_inv_impl = se3_Jl_inv_wp_func(dtype)
-    vec3_ctor = _DTYPE_TO_VEC3_CTOR[dtype]
-    quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    vec3_ctor = DTYPE_TO_VEC3[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     @wp.func
     def compute_se3_log_grad(output: T.Any, grad_output: T.Any) -> T.Any:
@@ -160,18 +141,6 @@ _kernel_factories = {
 
 
 # =============================================================================
-# Warp type for 6D vector
-# =============================================================================
-
-def _wp_vec6_type(dtype: torch.dtype):
-    match dtype:
-        case torch.float64: return wp.types.vector(6, wp.float64)
-        case torch.float32: return wp.types.vector(6, wp.float32)
-        case torch.float16: return wp.types.vector(6, wp.float16)
-        case _: raise NotImplementedError()
-
-
-# =============================================================================
 # Main backward function
 # =============================================================================
 
@@ -198,8 +167,8 @@ def SE3_Log_bwd(
     dtype = output.dtype
     device = output.device
     
-    vec6_type = _wp_vec6_type(dtype)
-    transform_type = wp_transform_type(dtype)
+    vec6_type = wp_vec6(dtype)
+    transform_type = wp_transform(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure contiguous

@@ -21,12 +21,13 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_vec3_type, wp_mat33_type
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     prepare_batch_single,
     finalize_output,
     get_eps_for_dtype,
+    wp_vec3,
+    wp_mat33,
 )
 
 
@@ -266,8 +267,8 @@ def so3_Jr_bwd(x_tensor: torch.Tensor, grad_output: torch.Tensor) -> torch.Tenso
     
     # Get warp types based on dtype
     dtype = x_tensor.dtype
-    vec3_type = wp_vec3_type(dtype)
-    mat33_type = wp_mat33_type(dtype)
+    vec3_type = wp_vec3(dtype)
+    mat33_type = wp_mat33(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

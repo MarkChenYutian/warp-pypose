@@ -5,7 +5,13 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_transform_type, wp_vec3_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    DTYPE_TO_QUAT,
+    DTYPE_TO_TRANSFORM,
+    wp_vec3,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -37,25 +43,6 @@ from ....utils.warp_utils import wp_transform_type, wp_vec3_type
 # =============================================================================
 
 
-_DTYPE_TO_VEC3_CTOR = {
-    wp.float16: wp.vec3h,
-    wp.float32: wp.vec3f,
-    wp.float64: wp.vec3d,
-}
-
-_DTYPE_TO_QUAT_CTOR = {
-    wp.float16: wp.quath,
-    wp.float32: wp.quatf,
-    wp.float64: wp.quatd,
-}
-
-_DTYPE_TO_TRANSFORM_CTOR = {
-    wp.float16: wp.transformh,
-    wp.float32: wp.transformf,
-    wp.float64: wp.transformd,
-}
-
-
 def _make_adjtxa_grad_funcs(dtype):
     """
     Factory function to create dtype-specific gradient computation functions.
@@ -66,8 +53,8 @@ def _make_adjtxa_grad_funcs(dtype):
     Returns:
         Tuple of (compute_grad_X, compute_grad_a) warp functions
     """
-    quat_ctor = _DTYPE_TO_QUAT_CTOR[dtype]
-    transform_ctor = _DTYPE_TO_TRANSFORM_CTOR[dtype]
+    quat_ctor = DTYPE_TO_QUAT[dtype]
+    transform_ctor = DTYPE_TO_TRANSFORM[dtype]
     
     @wp.func
     def compute_adjxa(X: T.Any, grad_linear: T.Any, grad_angular: T.Any) -> T.Any:
@@ -230,10 +217,6 @@ def _get_kernel(ndim: int, dtype):
     return _kernel_cache[key]
 
 
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-
-
 # =============================================================================
 # Main backward function
 # =============================================================================
@@ -273,8 +256,8 @@ def SE3_AdjTXa_bwd(
     
     dtype = X.dtype
     device = X.device
-    transform_type = wp_transform_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec3_type = wp_vec3(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous

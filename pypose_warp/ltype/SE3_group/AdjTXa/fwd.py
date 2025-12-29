@@ -6,7 +6,11 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_transform_type, wp_vec3_type
+from ...common.kernel_utils import (
+    TORCH_TO_WP_SCALAR,
+    wp_vec3,
+    wp_transform,
+)
 
 
 # =============================================================================
@@ -180,10 +184,6 @@ def _get_kernel(ndim: int, dtype):
     return _kernel_cache[key]
 
 
-# Import common utilities
-from ...common.kernel_utils import TORCH_TO_WP_SCALAR
-
-
 # =============================================================================
 # Main forward function
 # =============================================================================
@@ -248,8 +248,8 @@ def SE3_AdjTXa_fwd(X: pp.LieTensor, a: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec3_type = wp_vec3(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Convert to warp arrays

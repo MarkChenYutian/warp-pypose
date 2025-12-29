@@ -6,12 +6,12 @@ import warp as wp
 import typing as T
 import pypose as pp
 
-from ....utils.warp_utils import wp_transform_type
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_transform,
 )
 
 
@@ -117,7 +117,7 @@ def SE3_Inv_fwd(X: pp.LieTensor) -> torch.Tensor:
     
     # Get warp types based on dtype
     dtype = X_tensor.dtype
-    transform_type = wp_transform_type(dtype)
+    transform_type = wp_transform(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Ensure contiguous for warp

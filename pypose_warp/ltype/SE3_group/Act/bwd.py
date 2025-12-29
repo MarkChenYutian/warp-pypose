@@ -5,7 +5,6 @@ import torch
 import warp as wp
 import typing as T
 
-from ....utils.warp_utils import wp_vec3_type, wp_transform_type
 from ...common.kernel_utils import (
     TORCH_TO_WP_SCALAR,
     DTYPE_TO_QUAT,
@@ -13,6 +12,8 @@ from ...common.kernel_utils import (
     KernelRegistry,
     prepare_batch_single,
     finalize_output,
+    wp_vec3,
+    wp_transform,
 )
 
 
@@ -159,8 +160,8 @@ def SE3_Act_bwd(
     
     dtype = X.dtype
     device = X.device
-    transform_type = wp_transform_type(dtype)
-    vec3_type = wp_vec3_type(dtype)
+    transform_type = wp_transform(dtype)
+    vec3_type = wp_vec3(dtype)
     wp_scalar = TORCH_TO_WP_SCALAR[dtype]
     
     # Detach and ensure tensors are contiguous
