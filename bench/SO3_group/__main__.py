@@ -36,7 +36,7 @@ wp.init()
 wp.config.quiet = True
 
 # Import benchmark modules
-from . import Mat, Log, Mul, Act, Act4, AdjXa, AdjTXa, JInvp
+from . import Mat, Log, Mul, Act, Act4, AdjXa, AdjTXa, JInvp, AddExp
 
 
 # ============================================================================
@@ -125,6 +125,12 @@ OPERATORS = [
         bench_forward=JInvp.bench_forward,
         bench_backward=JInvp.bench_backward,
         has_kind=True,
+    ),
+    OperatorInfo(
+        name="AddExp",
+        bench_forward=AddExp.bench_forward,
+        bench_backward=AddExp.bench_backward,
+        has_kind=True,  # API accepts kind for consistency, but doesn't use it
     ),
 ]
 

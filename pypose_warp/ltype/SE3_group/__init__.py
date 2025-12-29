@@ -12,6 +12,7 @@ from .Mul import SE3_Mul, SE3_Mul_fwd, SE3_Mul_bwd
 from .AdjXa import SE3_AdjXa, SE3_AdjXa_fwd, SE3_AdjXa_bwd
 from .AdjTXa import SE3_AdjTXa, SE3_AdjTXa_fwd, SE3_AdjTXa_bwd
 from .Jinvp import SE3_Jinvp, SE3_Jinvp_fwd, SE3_Jinvp_bwd
+from .Mat import SE3_Mat, SE3_Mat_fwd, SE3_Mat_bwd
 
 
 class warp_SE3Type(SE3Type):
@@ -116,6 +117,25 @@ class warp_SE3Type(SE3Type):
         dim = -1 if out.nelement() != 0 else p_tensor.shape[-1]
         out = out.view(out_shape + (dim,))
         return LieTensor(out, ltype=pp.se3_type)
+
+    def matrix(self, input: pp.LieTensor) -> torch.Tensor:
+        """
+        Convert SE3 pose to 4x4 transformation matrix.
+        
+        This is more efficient than PyPose's default implementation which uses:
+            I = eye(4); return X.unsqueeze(-2).Act(I).transpose(-1,-2)
+        
+        Args:
+            input: SE3 LieTensor of shape (..., 7) - [tx, ty, tz, qx, qy, qz, qw]
+            
+        Returns:
+            Transformation matrix of shape (..., 4, 4)
+        """
+        return SE3_Mat.apply(input)
+
+    @classmethod
+    def add_(cls, input, other):
+        return input.copy_(LieTensor(other[..., :6], ltype=pp.se3_type).Exp() * input)
 
 
 warpSE3_type = warp_SE3Type()

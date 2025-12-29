@@ -32,6 +32,7 @@ class Operator(Enum):
     SO3_AdjXa = "SO3_AdjXa"
     SO3_AdjTXa = "SO3_AdjTXa"
     SO3_Jinvp = "SO3_Jinvp"
+    SO3_AddExp = "SO3_AddExp"
     # SO3 Algebra operators
     so3_Exp = "so3_Exp"
     so3_Mat = "so3_Mat"
@@ -44,6 +45,7 @@ class Operator(Enum):
     SE3_AdjXa = "SE3_AdjXa"
     SE3_AdjTXa = "SE3_AdjTXa"
     SE3_Jinvp = "SE3_Jinvp"
+    SE3_Mat = "SE3_Mat"
 
 
 # =============================================================================

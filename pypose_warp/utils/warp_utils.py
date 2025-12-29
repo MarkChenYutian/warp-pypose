@@ -34,6 +34,14 @@ def wp_mat33_type(dtype: torch.dtype):
         case _: raise NotImplementedError()
 
 
+def wp_mat44_type(dtype: torch.dtype):
+    match dtype:
+        case torch.float64: return wp.mat44d
+        case torch.float32: return wp.mat44f
+        case torch.float16: return wp.mat44h
+        case _: raise NotImplementedError()
+
+
 def wp_transform_type(dtype: torch.dtype):
     """Warp transform type for SE3 (3D translation + quaternion rotation)."""
     match dtype:

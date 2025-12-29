@@ -10,6 +10,7 @@ from .AdjXa  import SO3_AdjXa, SO3_AdjXa_fwd, SO3_AdjXa_bwd
 from .AdjTXa import SO3_AdjTXa, SO3_AdjTXa_fwd, SO3_AdjTXa_bwd
 from .Jinvp  import SO3_Jinvp, SO3_Jinvp_fwd, SO3_Jinvp_bwd
 from .Mat    import SO3_Mat, SO3_Mat_fwd, SO3_Mat_bwd
+from .AddExp import SO3_AddExp, SO3_AddExp_fwd, SO3_AddExp_bwd
 
 
 class warp_SO3Type(SO3Type):
@@ -67,5 +68,24 @@ class warp_SO3Type(SO3Type):
             Rotation matrix of shape (..., 3, 3)
         """
         return SO3_Mat.apply(input)
+
+    @classmethod
+    def add_(cls, input, other):
+        """
+        In-place update: input = Exp(other[..., :3]) * input.
+        
+        Uses fused AddExp kernel for better performance.
+        
+        Args:
+            input: SO3 LieTensor to update in-place
+            other: Tensor containing tangent space delta (uses first 3 components)
+            
+        Returns:
+            input (modified in-place)
+        """
+        delta = other[..., :3]
+        result = SO3_AddExp.apply(delta, input)
+        return input.copy_(result)
+
 
 warpSO3_type = warp_SO3Type()
