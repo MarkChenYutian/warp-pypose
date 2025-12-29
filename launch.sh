@@ -53,6 +53,6 @@ done
 echo "Starting service: ${SERVICE}"
 
 (
-    cd ./Docker/Linux
+    cd ./docker/Linux
     ./compose.sh run --rm --service-ports "${mount_args[@]}" "${SERVICE}" bash
 )
